@@ -215,6 +215,7 @@ const getRoutes = () => [
 export let router = null;
 
 export function setupRouter(app) {
+  
   router = createRouter({
     history: createWebHistory(),
     routes: getRoutes(),
