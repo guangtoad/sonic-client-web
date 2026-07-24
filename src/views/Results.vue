@@ -1,18 +1,50 @@
 <script setup>
+/**
+ * Results.vue - 测试结果管理页面
+ * 展示测试结果列表、支持结果查看、删除和强制停止操作
+ */
+
+// 引入 Vue 生命周期钩子和响应式 API
 import { onMounted, ref } from 'vue';
+
+// 引入路由
 import { useRoute, useRouter } from 'vue-router';
+
+// 引入 Element Plus 消息组件
 import { ElMessage } from 'element-plus';
+
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入 axios
 import axios from '../http/axios';
+
+// 引入分页组件
 import Pageable from '../components/Pageable.vue';
 
+// 获取国际化翻译函数
 const { t: $t } = useI18n();
 
+// 获取当前路由信息
 const route = useRoute();
+
+// 获取路由实例
 const router = useRouter();
+
+// 分页数据
 const pageData = ref({});
+
+// 每页条数
 const pageSize = ref(15);
+
+// 当前页码
 const pageCurrNum = ref(1);
+
+/**
+ * 获取测试结果列表
+ * @param {number} pageNum - 页码
+ * @param {number} pSize - 每页条数
+ */
 const getResultList = (pageNum, pSize) => {
   pageSize.value = pSize || pageSize.value;
   pageCurrNum.value = pageNum || pageCurrNum.value;
@@ -28,6 +60,11 @@ const getResultList = (pageNum, pSize) => {
       pageData.value = resp.data;
     });
 };
+
+/**
+ * 删除测试结果
+ * @param {number} id - 结果 ID
+ */
 const delResult = (id) => {
   axios
     .delete('/controller/results', {
@@ -44,6 +81,11 @@ const delResult = (id) => {
       }
     });
 };
+
+/**
+ * 强制停止测试套件
+ * @param {number} id - 套件 ID
+ */
 const forceStopSuite = (id) => {
   axios
     .get('/controller/testSuites/forceStopSuite', {

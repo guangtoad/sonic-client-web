@@ -1,22 +1,60 @@
 <script setup>
+/**
+ * TestSuites.vue - 测试套件管理页面
+ * 展示测试套件列表、支持套件创建、编辑、删除和运行操作
+ */
+
+// 引入 Vue 生命周期钩子和响应式 API
 import { onMounted, ref, watch } from 'vue';
+
+// 引入 Element Plus 消息组件
 import { ElMessage } from 'element-plus';
+
+// 引入路由
 import { useRoute } from 'vue-router';
+
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入 axios
 import axios from '../http/axios';
+
+// 引入测试套件更新组件
 import TestSuiteUpdate from '../components/TestSuiteUpdate.vue';
+
+// 引入分页组件
 import Pageable from '../components/Pageable.vue';
 
+// 获取国际化翻译函数
 const { t: $t } = useI18n();
 
+// 获取当前路由信息
 const route = useRoute();
+
+// 分页数据
 const pageData = ref({});
+
+// 每页条数
 const pageSize = ref(15);
+
+// 当前页码
 const pageCurrNum = ref(1);
+
+// 弹窗显示状态
 const dialogVisible = ref(false);
+
+// 搜索关键词
 const name = ref('');
+
+// 套件 ID
 const suiteId = ref(0);
+
+// 加载状态
 const loading = ref(false);
+
+/**
+ * 打开创建套件弹窗
+ */
 const open = () => {
   dialogVisible.value = true;
 };

@@ -46,6 +46,7 @@ const getImg = (name) => {
 const platformList = [
   { name: 'Android', value: 1, img: 'ANDROID' },
   { name: 'iOS', value: 2, img: 'IOS' },
+  { name: 'HarmonyOS', value: 3, img: 'HMOS' },
 ];
 const emit = defineEmits(['flush']);
 const caseForm = ref(null);

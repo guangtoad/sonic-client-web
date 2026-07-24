@@ -17,23 +17,55 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+/**
+ * StepShow.vue - 步骤展示组件
+ * 根据步骤类型渲染不同的步骤展示样式，支持脚本编辑、条件判断、元素操作等多种步骤类型
+ */
+
+// 引入 Element Plus 消息组件
 import { ElMessage } from 'element-plus';
+
+// 引入路由
 import { useRoute } from 'vue-router';
+
+// 引入 Element Plus 图标
 import { Edit } from '@element-plus/icons';
+
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入 Vue 响应式 API
 import { ref } from 'vue';
+
+// 引入代码编辑器组件
 import CodeEditor from './CodeEditor.vue';
+
+// 引入 axios
 import axios from '../http/axios';
+
+// 引入子步骤列表视图组件
 import ChildStepListView from './ChildStepListView.vue';
 
+// 获取国际化翻译函数
 const { t: $t } = useI18n();
+
+// 获取当前路由信息
 const route = useRoute();
+
+/**
+ * 定义组件属性
+ */
 const props = defineProps({
+  // 步骤对象
   step: Object,
 });
 
+// 子步骤列表（用于公共步骤展开显示）
 const childStep = ref([]);
 
+/**
+ * 保存步骤
+ */
 const summitStep = () => {
   axios.put('/controller/steps', props.step).then((resp) => {
     if (resp.code === 2000) {
@@ -44,6 +76,10 @@ const summitStep = () => {
   });
 };
 
+/**
+ * 获取公共步骤详情
+ * @param {number} id - 公共步骤 ID
+ */
 const getPublicStepInfo = (id) => {
   axios.get('/controller/publicSteps', { params: { id } }).then((resp) => {
     if (resp.code === 2000) {
@@ -54,6 +90,11 @@ const getPublicStepInfo = (id) => {
   });
 };
 
+/**
+ * 获取文本断言操作类型的翻译
+ * @param {string} s - 操作类型（equal, notEqual, contain, notContain）
+ * @returns {string} 翻译后的操作类型文本
+ */
 const getAssertTextOpe = (s) => {
   switch (s) {
     case 'equal':
@@ -69,6 +110,11 @@ const getAssertTextOpe = (s) => {
   }
 };
 
+/**
+ * 获取滚动方向的翻译
+ * @param {string} direction - 滚动方向（up, down）
+ * @returns {string} 翻译后的方向文本
+ */
 const getScrollToDire = (direction) => {
   switch (direction) {
     case 'up':
@@ -79,6 +125,12 @@ const getScrollToDire = (direction) => {
       return $t('stepDetail.unknownScrollSideType');
   }
 };
+
+/**
+ * 根据步骤类型获取元素类型标识
+ * @param {string} s - 步骤类型
+ * @returns {string} 元素类型（POCO, WebView, 或原生）
+ */
 const getEleResult = (s) => {
   const ss = s.toUpperCase();
   if (ss.indexOf('POCO') !== -1) {
@@ -90,11 +142,19 @@ const getEleResult = (s) => {
   return $t('stepDetail.native');
 };
 
+/**
+ * 从脚本代码中提取注释作为步骤说明
+ * 支持单行注释（// 或 #）和多行注释（/* ... * /）
+ * @param {string} text - 脚本代码文本
+ * @param {string} type - 脚本类型（Groovy 或 Python）
+ * @returns {string} 提取的注释文本
+ */
 const getNotes = (text, type) => {
   const notes = [];
   const textArray = text.split('\n');
   let index = 0;
-  // 过滤掉前面空行
+  
+  // 过滤掉前面的空行
   for (let i = 0; i < textArray.length; i++) {
     if (textArray[i].trim() === '') {
       index++;
@@ -102,7 +162,8 @@ const getNotes = (text, type) => {
       break;
     }
   }
-  // 获取前面的注释
+  
+  // 获取前面的注释（单行注释）
   const prefix = type === 'Groovy' ? '//' : '#';
   if (text.trim().substring(0, prefix.length) === prefix) {
     while (
@@ -114,12 +175,13 @@ const getNotes = (text, type) => {
     }
     return `: ${notes.join(',')}`;
   }
+  
+  // 处理 Groovy 的多行注释（/* ... */）
   if (
     text.trim().substring(0, 2) === '/*' &&
     type === 'Groovy' &&
     text.indexOf('*/') !== -1
   ) {
-    // 处理大片注释的情况
     return `: ${text
       .substring(text.indexOf('/*') + 2, text.indexOf('*/'))
       .split('\n')
@@ -127,6 +189,7 @@ const getNotes = (text, type) => {
       .filter((s) => s !== '')
       .join(',')}`;
   }
+  
   return '';
 };
 </script>

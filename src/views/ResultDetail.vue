@@ -1,9 +1,19 @@
 <script setup>
+/**
+ * ResultDetail.vue - 测试结果详情页面
+ * 展示测试结果的详细信息、步骤日志、性能图表等
+ */
+
+// 引入路由
 import { useRoute, useRouter } from 'vue-router';
+
+// 引入 Vue 生命周期钩子和响应式 API
 import { nextTick, onMounted, onUnmounted, ref, reactive } from 'vue';
-//import 'vue3-video-play/dist/style.css';
-//import { videoPlay } from 'vue3-video-play';
+
+// 引入 ECharts 图表库
 import * as echarts from 'echarts/core';
+
+// 引入 ECharts 组件
 import {
   TitleComponent,
   ToolboxComponent,
@@ -11,20 +21,41 @@ import {
   GridComponent,
   LegendComponent,
 } from 'echarts/components';
+
+// 引入 ECharts 图表类型
 import { LineChart, PieChart } from 'echarts/charts';
+
+// 引入 ECharts 渲染器
 import { CanvasRenderer } from 'echarts/renderers';
+
+// 引入 Element Plus 消息组件
 import { ElMessage } from 'element-plus';
+
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入步骤日志组件
 import StepLog from '../components/StepLog.vue';
+
+// 引入 axios
 import axios from '../http/axios';
+
+// 引入 iOS 性能图表组件
 import IOSPerfChart from '../components/IOSPerfChart.vue';
 
+// 引入 Android 性能图表组件
 import AndroidPerfChart from '../components/AndroidPerfChart.vue';
 
+// iOS 性能图表实例映射
 const iosPerfChartMap = {};
 
+// Android 性能图表实例映射
 const androidPerfChartMap = {};
+
+// 获取国际化翻译函数
 const { t: $t } = useI18n();
+
+// 注册 ECharts 组件
 echarts.use([
   PieChart,
   ToolboxComponent,
@@ -35,27 +66,61 @@ echarts.use([
   TitleComponent,
   TooltipComponent,
 ]);
+
+// 获取路由实例
 const router = useRouter();
+
+// 获取当前路由信息
 const route = useRoute();
+
+// 测试结果数据
 const results = ref({});
+
+// 测试用例列表
 const testCaseList = ref([]);
+
+// 设备列表
 const deviceList = ref([]);
+
+// 当前选中的用例 ID
 const caseId = ref(0);
+
+// 当前选中的设备 ID
 const deviceId = ref('');
+
+// 上次选中的设备
 const lastDevice = ref({});
+
+// 步骤列表
 const stepList = ref([]);
+
+// 是否加载完成
 const done = ref(false);
+
+// 步骤加载状态
 const stepLoading = ref(false);
+
+// 当前查看类型（log/performance/video）
 const type = ref('log');
+
+// 录屏 URL
 const recordUrl = ref('');
-// const videoOptions = reactive({
-//   width: '48%',
-//   height: 'auto',
-//   controlBtns: ['audioTrack', 'quality', 'volume', 'fullScreen', 'speedRate'],
-// });
+
+// 分页变量
 let page = 1;
+
+// 窗口 resize 回调函数
 let resizeFun;
+
+// 图表 resize 回调函数
 let resizeChart;
+
+/**
+ * 计算两个日期之间的时间差（秒）
+ * @param {string} date1 - 开始日期
+ * @param {string} date2 - 结束日期
+ * @returns {number} 时间差（秒）
+ */
 const subTime = (date1, date2) => {
   let data = (new Date(date2) - new Date(date1)) / 1000;
   let time = '';

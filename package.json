@@ -4,6 +4,7 @@
     "author": "SonicCloudOrg",
     "scripts": {
         "dev": "vite",
+        "dev:inspect": "VITE_INSPECTOR=true vite",
         "build": "vite build",
         "serve": "vite preview",
         "eslint": "eslint src/ --ext .js,.vue --fix",
@@ -15,17 +16,17 @@
         "@codemirror/lang-python": "^6.0.2",
         "@codemirror/theme-one-dark": "^6.1.0",
         "@element-plus/icons": "0.0.11",
-        "axios": "^1.18.1",
+        "axios": "0.21.4",
         "codemirror": "^6.0.1",
-        "echarts": "^6.1.0",
+        "echarts": "5.3.0",
         "element-plus": "1.1.0-beta.24",
         "jmuxer": "^2.0.3",
         "less": "^4.1.2",
         "less-loader": "^10.2.0",
-        "moment": "^2.30.1",
+        "moment": "2.29.1",
         "qs": "^6.11.1",
         "rollup-plugin-copy": "3.4.0",
-        "vue": "^3.5.40",
+        "vue": "3.2.14",
         "vue-clipboard3": "1.0.1",
         "vue-codemirror": "^6.1.1",
         "vue-draggable-next": "2.0.1",
@@ -36,7 +37,7 @@
     "devDependencies": {
         "@typescript-eslint/eslint-plugin": "^5.40.0",
         "@typescript-eslint/parser": "^5.40.0",
-        "@vitejs/plugin-vue": "^6.0.7",
+        "@vitejs/plugin-vue": "1.9.0",
         "@vue/compiler-sfc": "3.2.14",
         "eslint": "^8.25.0",
         "eslint-config-airbnb-base": "^15.0.0",
@@ -47,14 +48,8 @@
         "eslint-plugin-vue": "^9.6.0",
         "husky": "^7.0.4",
         "prettier": "^2.7.1",
-        "vite": "^8.1.4",
+        "vite": "2.5.10",
+        "vite-plugin-vue-inspector": "^3.7.2",
         "vue-eslint-parser": "^9.0.2"
-    },
-    "allowScripts": {
-        "0": "vue-demi",
-        "1": "fsevents",
-        "vue-demi@0.14.10": true,
-        "fsevents@2.3.3": true,
-        "unrs-resolver@1.12.2": true
     }
 }

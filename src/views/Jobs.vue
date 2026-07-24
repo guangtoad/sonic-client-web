@@ -1,32 +1,77 @@
 <script setup>
+/**
+ * Jobs.vue - 定时任务管理页面
+ * 展示定时任务列表、支持任务创建、编辑、删除和手动执行操作
+ */
+
+// 引入 Vue 生命周期钩子和响应式 API
 import { onMounted, ref } from 'vue';
+
+// 引入路由
 import { useRoute } from 'vue-router';
+
+// 引入 Element Plus 消息组件
 import { ElMessage } from 'element-plus';
+
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入 axios
 import axios from '../http/axios';
+
+// 引入分页组件
 import Pageable from '../components/Pageable.vue';
 
+// 获取国际化翻译函数
 const { t: $t } = useI18n();
 
+// 获取当前路由信息
 const route = useRoute();
+
+// 弹窗显示状态
 const dialogVisible = ref(false);
+
+// 分页数据
 const pageData = ref({});
+
+// 每页条数
 const pageSize = ref(15);
+
+// 当前页码
 const pageCurrNum = ref(1);
+
+// 更新任务引用
 const updateJob = ref(null);
+
+// 测试套件列表
 const testSuiteList = ref([]);
+
+// Cron 表达式弹窗显示状态
 const dialogCron = ref(false);
+
+/**
+ * 任务表单数据
+ */
 const jobs = ref({
-  id: null,
-  projectId: route.params.projectId,
-  name: '',
-  suiteId: null,
-  cronExpression: '',
+  id: null, // 任务 ID（新增时为 null）
+  projectId: route.params.projectId, // 项目 ID
+  name: '', // 任务名称
+  suiteId: null, // 关联的测试套件 ID
+  cronExpression: '', // Cron 表达式
 });
+
+/**
+ * 编辑任务
+ * @param {number} id - 任务 ID
+ */
 const editJobs = async (id) => {
   await open();
   await getJobInfo(id);
 };
+
+/**
+ * 打开任务弹窗（新增或编辑）
+ */
 const open = () => {
   jobs.value = {
     id: null,

@@ -1,17 +1,43 @@
 <script setup>
+/**
+ * Home.vue - 主布局页面
+ * 包含左侧导航菜单和顶部导航栏，作为项目内所有页面的统一布局容器
+ */
+
+// 引入 Vue 生命周期钩子
 import { onMounted } from 'vue';
+
+// 引入 Vuex 状态管理
 import { useStore } from 'vuex';
+
+// 引入路由
 import { useRoute } from 'vue-router';
+
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入顶部导航栏组件
 import Header from '../components/Header.vue';
+
+// 引入默认 Logo 图片
 import defaultLogo from '../assets/logo.png';
 
+// 获取国际化翻译函数
 const { t: $t } = useI18n();
 
+// 获取 Vuex Store 实例
 const store = useStore();
+
+// 获取当前路由信息
 const route = useRoute();
+
+/**
+ * 组件挂载后执行
+ * 根据屏幕宽度自动折叠侧边栏（响应式布局）
+ */
 onMounted(() => {
   const windowWidth = document.body.clientWidth;
+  // 如果屏幕宽度小于 1200px，自动折叠侧边栏
   if (windowWidth < 1200) {
     store.commit('autoChangeCollapse');
   }
@@ -75,6 +101,12 @@ onMounted(() => {
             >
               <i class="el-icon-d-arrow-right"></i
               >{{ $t('homeTS.testCase.iosCase') }}
+            </el-menu-item>
+            <el-menu-item
+              :index="'/Home/' + route.params.projectId + '/HarmonyOSTestCase'"
+            >
+              <i class="el-icon-d-arrow-right"></i
+              >{{ $t('homeTS.testCase.hmCase') }}
             </el-menu-item>
           </el-sub-menu>
           <el-menu-item

@@ -1,39 +1,93 @@
 <script setup>
+/**
+ * PublicStep.vue - 公共步骤管理页面
+ * 展示公共步骤列表、支持步骤创建、编辑、删除操作
+ */
+
+// 引入 Vue 生命周期钩子和响应式 API
 import { onMounted, ref, watch } from 'vue';
+
+// 引入路由
 import { useRoute } from 'vue-router';
+
+// 引入 Element Plus 消息组件
 import { ElMessage } from 'element-plus';
+
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入公共步骤更新组件
 import PublicStepUpdate from '../components/PublicStepUpdate.vue';
+
+// 引入分页组件
 import Pageable from '../components/Pageable.vue';
+
+// 引入 axios
 import axios from '../http/axios';
+
+// 引入子步骤列表视图组件
 import ChildStepListView from '../components/ChildStepListView.vue';
 
+// 获取国际化翻译函数
 const { t: $t } = useI18n();
 
+// 获取当前路由信息
 const route = useRoute();
+
+// 弹窗显示状态
 const dialogVisible = ref(false);
+
+// 分页数据
 const pageData = ref({});
+
+// 每页条数
 const pageSize = ref(15);
+
+// 当前页码
 const pageCurrNum = ref(1);
+
+// 公共步骤 ID
 const publicStepId = ref(0);
+
+// 监听弹窗关闭，重置步骤 ID
 watch(dialogVisible, (newValue, oldValue) => {
   if (!newValue) {
     publicStepId.value = 0;
   }
 });
+
+/**
+ * 编辑公共步骤
+ * @param {number} id - 步骤 ID
+ */
 const editPublicStep = async (id) => {
   publicStepId.value = id;
   await open();
 };
+
+/**
+ * 打开步骤弹窗
+ */
 const open = () => {
   dialogVisible.value = true;
 };
+
+/**
+ * 刷新步骤列表
+ * @param {boolean} e - 是否关闭弹窗
+ */
 const flush = (e) => {
   if (e) {
     dialogVisible.value = false;
   }
   getPublicStepList();
 };
+
+/**
+ * 获取公共步骤列表
+ * @param {number} pageNum - 页码
+ * @param {number} pSize - 每页条数
+ */
 const getPublicStepList = (pageNum, pSize) => {
   pageSize.value = pSize || pageSize.value;
   pageCurrNum.value = pageNum || pageCurrNum.value;

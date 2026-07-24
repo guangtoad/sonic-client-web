@@ -1,25 +1,61 @@
 <script setup>
+/**
+ * Versions.vue - 版本管理页面
+ * 展示版本列表、支持版本创建、编辑、删除操作
+ */
+
+// 引入 Vue 生命周期钩子和响应式 API
 import { onMounted, ref } from 'vue';
+
+// 引入路由
 import { useRoute } from 'vue-router';
+
+// 引入 Element Plus 消息组件
 import { ElMessage } from 'element-plus';
+
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入 axios
 import axios from '../http/axios';
 
+// 获取国际化翻译函数
 const { t: $t } = useI18n();
+
+// 获取当前路由信息
 const route = useRoute();
+
+// 弹窗显示状态
 const dialogVisible = ref(false);
+
+// 版本列表数据
 const pageData = ref([]);
+
+// 更新版本引用
 const updateVersion = ref(null);
+
+/**
+ * 版本表单数据
+ */
 const versions = ref({
-  id: null,
-  projectId: route.params.projectId,
-  versionName: '',
-  createTime: '',
+  id: null, // 版本 ID（新增时为 null）
+  projectId: route.params.projectId, // 项目 ID
+  versionName: '', // 版本名称
+  createTime: '', // 创建时间
 });
+
+/**
+ * 编辑版本
+ * @param {number} id - 版本 ID
+ */
 const editVersion = async (id) => {
   await open();
   await getVersionInfo(id);
 };
+
+/**
+ * 打开版本弹窗（新增或编辑）
+ */
 const open = () => {
   versions.value = {
     id: null,
@@ -29,6 +65,10 @@ const open = () => {
   };
   dialogVisible.value = true;
 };
+
+/**
+ * 获取版本列表
+ */
 const getVersionList = () => {
   axios
     .get('/controller/versions/list', {
@@ -40,6 +80,11 @@ const getVersionList = () => {
       pageData.value = resp.data;
     });
 };
+
+/**
+ * 获取版本详情
+ * @param {number} id - 版本 ID
+ */
 const getVersionInfo = (id) => {
   axios
     .get('/controller/versions', {

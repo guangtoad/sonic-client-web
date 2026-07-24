@@ -1,8 +1,22 @@
 <script setup>
+/**
+ * ProjectIndex.vue - 项目概览页面
+ * 展示项目的测试统计数据、图表分析、测试用例和设备信息
+ */
+
+// 引入 Vue 生命周期钩子和响应式 API
 import { onMounted, onUnmounted, ref } from 'vue';
+
+// 引入 moment 日期处理库
 import moment from 'moment';
+
+// 引入路由
 import { useRoute } from 'vue-router';
+
+// 引入 ECharts 图表库
 import * as echarts from 'echarts/core';
+
+// 引入 ECharts 组件
 import {
   TitleComponent,
   ToolboxComponent,
@@ -10,13 +24,23 @@ import {
   GridComponent,
   LegendComponent,
 } from 'echarts/components';
+
+// 引入 ECharts 图表类型
 import { LineChart, PieChart } from 'echarts/charts';
+
+// 引入 ECharts 渲染器
 import { CanvasRenderer } from 'echarts/renderers';
+
+// 引入 Vuex 状态管理
 import { useStore } from 'vuex';
 
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入 axios
 import axios from '../http/axios';
 
+// 获取国际化翻译函数
 const { t: $t } = useI18n();
 
 echarts.use([

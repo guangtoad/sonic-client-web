@@ -6,3 +6,5 @@ dist-ssr
 .idea
 .vscode
 *.iml
+/docs/private/
+/logs/

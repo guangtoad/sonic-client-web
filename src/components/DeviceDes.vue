@@ -1,24 +1,63 @@
 <script setup>
+/**
+ * DeviceDes.vue - 设备详情卡片组件
+ * 展示设备的详细信息，包括型号、制造商、系统版本、电量、温度等
+ * 支持设备远程控制、重启、删除等操作
+ */
+
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入 Element Plus 消息组件
 import { ElMessage } from 'element-plus';
+
+// 引入颜色图片组件
 import ColorImg from '@/components/ColorImg.vue';
+
+// 引入路由
 import { useRouter } from 'vue-router';
+
+// 引入状态渲染组件
 import RenderStatus from './RenderStatus.vue';
+
+// 引入设备名称渲染组件
 import RenderDeviceName from './RenderDeviceName.vue';
+
+// 引入 axios
 import axios from '../http/axios';
 
+// 获取路由实例
 const router = useRouter();
+
+// 获取国际化翻译函数
 const { t: $t } = useI18n();
+
+// 加载所有图片资源（使用 globEager 同步加载）
 const img = import.meta.globEager('./../assets/img/*');
+/**
+ * 定义组件属性
+ */
 const props = defineProps({
+  // 设备信息对象
   device: Object,
+  // Agent 列表（用于显示设备所属 Agent）
   agentList: Array,
+  // 是否显示详情模式
   detail: {
     type: Boolean,
     default: false,
   },
 });
+
+/**
+ * 定义组件事件
+ */
 const emit = defineEmits(['flush']);
+
+/**
+ * 上传设备图片
+ * @param {Object} content - 上传内容对象，包含 file 和 data.id
+ */
 const upload = (content) => {
   const formData = new FormData();
   formData.append('file', content.file);
@@ -29,10 +68,18 @@ const upload = (content) => {
     })
     .then((resp) => {
       if (resp.code === 2000) {
+        // 上传成功后更新设备图片
         updateImg(content.data.id, resp.data);
       }
     });
 };
+
+/**
+ * 上传前校验
+ * 只允许上传 jpg 和 png 格式的图片
+ * @param {File} file - 上传的文件
+ * @returns {boolean} 是否允许上传
+ */
 const beforeAvatarUpload = (file) => {
   if (file.name.endsWith('.jpg') || file.name.endsWith('.png')) {
     return true;
@@ -42,16 +89,28 @@ const beforeAvatarUpload = (file) => {
   });
   return false;
 };
+
+/**
+ * 更新设备图片
+ * @param {number} id - 设备 ID
+ * @param {string} imgUrl - 图片 URL
+ */
 const updateImg = (id, imgUrl) => {
   axios.put('/controller/devices/updateImg', { id, imgUrl }).then((resp) => {
     if (resp.code === 2000) {
       ElMessage.success({
         message: resp.message,
       });
+      // 触发刷新事件，通知父组件更新列表
       emit('flush');
     }
   });
 };
+
+/**
+ * 保存设备详情（昵称和密码）
+ * @param {Object} device - 设备对象
+ */
 const saveDetail = (device) => {
   axios
     .put('/controller/devices/saveDetail', {
@@ -67,29 +126,50 @@ const saveDetail = (device) => {
       }
     });
 };
+
+/**
+ * 删除设备
+ * @param {number} id - 设备 ID
+ */
 const deleteDevice = (id) => {
   axios.delete('/controller/devices', { params: { id } }).then((resp) => {
     if (resp.code === 2000) {
       ElMessage.success({
         message: resp.message,
       });
+      // 触发刷新事件，通知父组件更新列表
       emit('flush');
     }
   });
 };
+
+/**
+ * 跳转到远程控制页面
+ * 根据平台类型跳转到对应的远程控制页面（新窗口打开）
+ * @param {number} id - 设备 ID
+ * @param {number} platform - 平台类型（1: Android, 2: iOS）
+ */
 const jump = (id, platform) => {
   let routeData;
   if (platform === 1) {
+    // Android 设备
     routeData = router.resolve({
       path: `/AndroidRemote/${id}`,
     });
   } else {
+    // iOS 设备
     routeData = router.resolve({
       path: `/IOSRemote/${id}`,
     });
   }
+  // 在新窗口打开远程控制页面
   window.open(routeData.href, '_blank');
 };
+
+/**
+ * 重启设备
+ * @param {number} id - 设备 ID
+ */
 const reboot = (id) => {
   axios.get('/transport/exchange/reboot', { params: { id } }).then((resp) => {
     if (resp.code === 2000) {
@@ -99,17 +179,34 @@ const reboot = (id) => {
     }
   });
 };
+/**
+ * 获取设备图片 URL
+ * 如果设备没有自定义图片，则使用默认图片
+ * @param {string} name - 设备型号名称
+ * @param {string} url - 设备图片 URL
+ * @returns {string} 图片 URL
+ */
 const getPhoneImg = (name, url) => {
   let result;
   if (url === null || !url || (url && url.length === 0)) {
+    // 使用默认图片
     result = img['./../assets/img/default.png'].default;
   } else {
+    // 使用设备自定义图片
     result = url;
   }
   return result;
 };
+
+/**
+ * 获取制造商 Logo 图片
+ * 处理部分制造商名称的大小写问题
+ * @param {string} name - 制造商名称
+ * @returns {string} Logo 图片 URL
+ */
 const getImg = (name) => {
   let result;
+  // 处理特殊制造商名称的大小写
   if (name === 'meizu') {
     name = 'Meizu';
   }
@@ -117,12 +214,20 @@ const getImg = (name) => {
     name = 'Lenovo';
   }
   try {
+    // 尝试获取对应制造商的 Logo
     result = img[`./../assets/img/${name}.jpg`].default;
   } catch {
+    // 如果找不到，使用未知制造商的 Logo
     result = img['./../assets/img/unName.jpg'].default;
   }
   return result;
 };
+
+/**
+ * 根据 Agent ID 查找 Agent 名称
+ * @param {number} id - Agent ID
+ * @returns {string} Agent 名称，如果找不到则返回 '未知'
+ */
 const findAgentById = (id) => {
   let result = $t('form.unknown');
   for (const i in props.agentList) {

@@ -1,36 +1,80 @@
 <script setup>
+/**
+ * Login.vue - 登录页面
+ * 提供用户登录和注册功能，支持普通登录和 LDAP 登录
+ */
+
+// 引入 Vue 生命周期钩子和响应式 API
 import { onMounted, ref } from 'vue';
+
+// 引入 Element Plus 消息组件
 import { ElMessage } from 'element-plus';
+
+// 引入路由
 import { useRoute, useRouter } from 'vue-router';
+
+// 引入 Vuex 状态管理
 import { useStore } from 'vuex';
 
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入 axios
 import axios from '../http/axios';
+
+// 引入 Logo 图片
 import logoT from '../assets/logo.png';
 import logo from '../assets/img/logo2.png';
 import background from '../assets/img/background.svg';
 
+// 获取国际化翻译函数
 const { t: $t } = useI18n();
 
+// 获取路由实例
 const router = useRouter();
+
+// 获取当前路由信息
 const route = useRoute();
+
+// 获取 Vuex Store 实例
 const store = useStore();
+
+/**
+ * 用户登录表单数据
+ */
 const user = ref({
-  userName: '',
-  password: '',
+  userName: '', // 用户名
+  password: '', // 密码
 });
+
+/**
+ * 用户注册表单数据
+ */
 const register = ref({
-  userName: '',
-  password: '',
-  role: 2,
+  userName: '', // 用户名
+  password: '', // 密码
+  role: 2, // 角色（默认测试工程师）
 });
+
+// 登录表单引用
 const loginForm = ref(null);
+
+// 配置加载状态
 const configLoading = ref(true);
+
+/**
+ * 登录配置
+ * 控制是否启用注册、普通登录、LDAP 登录
+ */
 const config = ref({
-  registerEnable: false,
-  normalEnable: false,
-  ldapEnable: false,
+  registerEnable: false, // 是否启用注册
+  normalEnable: false, // 是否启用普通登录
+  ldapEnable: false, // 是否启用 LDAP 登录
 });
+
+/**
+ * 获取登录配置
+ */
 const getLoginConfig = () => {
   axios.get('/controller/users/loginConfig').then((resp) => {
     if (resp.code === 2000) {
@@ -39,12 +83,19 @@ const getLoginConfig = () => {
     }
   });
 };
+
+/**
+ * 提交登录请求
+ * @param {Object} u - 用户登录数据
+ */
 const loginPost = (u) => {
   loading.value = true;
   axios.post('/controller/users/login', u).then((resp) => {
     loading.value = false;
     if (resp.code === 2000) {
+      // 登录成功，保存用户信息到 Vuex
       store.commit('changeLogin', resp.data);
+      // 重定向到之前的页面或首页
       if (route.query.redirect) {
         const { redirect } = route.query;
         router.replace(redirect);
@@ -54,18 +105,31 @@ const loginPost = (u) => {
     }
   });
 };
+
+/**
+ * 登录处理
+ */
 const login = () => {
   loginForm.value.validate(async (valid) => {
     if (valid) {
+      // 清除之前的认证信息
       await store.commit('clearAuth');
+      // 提交登录请求
       await loginPost(user.value);
     }
   });
 };
+
+// 注册表单引用
 const registerForm = ref(null);
+
+/**
+ * 注册处理
+ */
 const registerIn = () => {
   registerForm.value.validate(async (valid) => {
     if (valid) {
+      // 清除之前的认证信息
       await store.commit('clearAuth');
       loading.value = true;
       await axios
@@ -76,6 +140,7 @@ const registerIn = () => {
             ElMessage.success({
               message: resp.message,
             });
+            // 注册成功后自动登录
             loginPost({
               userName: register.value.userName,
               password: register.value.password,
@@ -85,7 +150,14 @@ const registerIn = () => {
     }
   });
 };
+
+// 登录/注册加载状态
 const loading = ref(false);
+
+/**
+ * 组件挂载后执行
+ * 获取登录配置
+ */
 onMounted(() => {
   getLoginConfig();
 });

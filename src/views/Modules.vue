@@ -1,26 +1,60 @@
 <script setup>
+/**
+ * Modules.vue - 模块管理页面
+ * 展示模块列表、支持模块创建、编辑、删除操作
+ */
+
+// 引入 Vue 生命周期钩子和响应式 API
 import { onMounted, ref } from 'vue';
+
+// 引入路由
 import { useRoute } from 'vue-router';
+
+// 引入 Element Plus 消息组件
 import { ElMessage } from 'element-plus';
 
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入 axios
 import axios from '../http/axios';
 
+// 获取国际化翻译函数
 const { t: $t } = useI18n();
 
+// 获取当前路由信息
 const route = useRoute();
+
+// 弹窗显示状态
 const dialogVisible = ref(false);
+
+// 模块列表数据
 const pageData = ref([]);
+
+// 更新模块引用
 const updateModule = ref(null);
+
+/**
+ * 模块表单数据
+ */
 const modules = ref({
-  id: null,
-  projectId: route.params.projectId,
-  name: '',
+  id: null, // 模块 ID（新增时为 null）
+  projectId: route.params.projectId, // 项目 ID
+  name: '', // 模块名称
 });
+
+/**
+ * 编辑模块
+ * @param {number} id - 模块 ID
+ */
 const editModule = async (id) => {
   await open();
   await getModuleInfo(id);
 };
+
+/**
+ * 打开模块弹窗（新增或编辑）
+ */
 const open = () => {
   modules.value = {
     id: null,
@@ -29,6 +63,10 @@ const open = () => {
   };
   dialogVisible.value = true;
 };
+
+/**
+ * 获取模块列表
+ */
 const getModuleList = () => {
   axios
     .get('/controller/modules/list', {
@@ -40,6 +78,11 @@ const getModuleList = () => {
       pageData.value = resp.data;
     });
 };
+
+/**
+ * 获取模块详情
+ * @param {number} id - 模块 ID
+ */
 const getModuleInfo = (id) => {
   axios
     .get('/controller/modules', {

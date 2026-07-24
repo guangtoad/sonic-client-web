@@ -1,41 +1,66 @@
+/**
+ * 路由配置文件
+ * 定义应用的所有路由规则，包括登录页、首页、项目管理页和系统设置页
+ */
+
+// 引入 Vue Router 核心函数
 import { createRouter, createWebHistory } from 'vue-router';
+
+// 引入国际化翻译函数，用于动态设置路由标题
 import { $tc } from '@/locales/setupI18n';
 
+/**
+ * 获取路由配置数组
+ * 使用函数形式返回，确保国际化配置在路由创建前已完成
+ * @returns {Array} 路由配置数组
+ */
 const getRoutes = () => [
+  // 登录页路由
   {
     path: '/Login',
+    // 使用懒加载方式导入组件，优化首屏加载速度
     component: () => import('../views/Login.vue'),
+    // 路由元信息，用于设置页面标题
     meta: { title: $tc('routes.login') },
   },
+  // 默认路由重定向到首页
   {
     path: '/',
     redirect: '/Index',
   },
+  // Android 远程控制路由（独立页面）
   {
     path: '/AndroidRemote/:deviceId(\\d+)',
+    // 参数校验：deviceId 必须为数字
     component: () => import('../views/RemoteEmulator/index.vue'),
     meta: { title: $tc('routes.remoteControl') },
   },
+  // iOS 远程控制路由（独立页面）
   {
     path: '/IOSRemote/:deviceId(\\d+)',
     component: () => import('../views/RemoteEmulator/indexIOS.vue'),
     meta: { title: $tc('routes.remoteControl') },
   },
+  // 首页路由（项目列表页）
   {
     path: '/Index',
     component: () => import('../views/Index.vue'),
     meta: { title: $tc('routes.home') },
+    // 首页子路由
     children: [
+      // 设备中心子路由
       {
         path: 'Devices',
         component: () => import('../views/Devices.vue'),
         meta: { title: $tc('routes.deviceCenter') },
       },
+      // Android 远程控制子路由
       {
         path: 'AndroidRemote/:deviceId(\\d+)',
         component: () => import('../views/RemoteEmulator/index.vue'),
         meta: { title: $tc('routes.remoteControl') },
       },
+      // iOS 远程控制子路由
       {
         path: 'IOSRemote/:deviceId(\\d+)',
         component: () => import('../views/RemoteEmulator/indexIOS.vue'),
@@ -43,10 +68,13 @@ const getRoutes = () => [
       },
     ],
   },
+  // 项目主页路由（带项目ID参数）
   {
     path: '/Home/:projectId(\\d+)',
     component: () => import('../views/Home.vue'),
+    // 默认重定向到项目概览页
     redirect: { name: 'ProjectIndex' },
+    // 项目管理子路由
     children: [
       {
         path: 'Devices',
@@ -74,6 +102,12 @@ const getRoutes = () => [
         name: 'IOSTestCase',
         component: () => import('../views/IOSTestCase.vue'),
         meta: { title: $tc('routes.iosTestCase') },
+      },
+      {
+        path: 'HarmonyOSTestCase',
+        name: 'HarmonyOSTestCase',
+        component: () => import('../views/HarmonyOSTestCase.vue'),
+        meta: { title: $tc('routes.hmtestCase') },
       },
       {
         path: 'StepListView/:caseId(\\d+)',
@@ -212,13 +246,21 @@ const getRoutes = () => [
   },
 ];
 
+// 路由实例，用于在其他模块中访问路由对象
 export let router = null;
 
+/**
+ * 初始化路由并注册到 Vue 应用
+ * @param {Object} app - Vue 应用实例
+ */
 export function setupRouter(app) {
-  
+  // 创建路由实例
   router = createRouter({
+    // 使用 HTML5 History 模式（去掉 URL 中的 #）
     history: createWebHistory(),
+    // 加载路由配置
     routes: getRoutes(),
   });
+  // 将路由注册到 Vue 应用
   app.use(router);
 }

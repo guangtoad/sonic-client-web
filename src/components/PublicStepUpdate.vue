@@ -39,6 +39,8 @@ const tabValue = ref('select');
 const platformList = [
   { name: 'Android', value: 1, img: 'ANDROID' },
   { name: 'iOS', value: 2, img: 'IOS' },
+  { name: 'HarmonyOS', value: 3, img: 'HMOS' },
+  
 ];
 const getImg = (name) => {
   let result;

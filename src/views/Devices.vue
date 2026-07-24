@@ -16,24 +16,61 @@
  *   You should have received a copy of the GNU Affero General Public License
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
+/**
+ * Devices.vue - 设备管理页面
+ * 展示设备列表、支持设备筛选、远程控制、重启、删除等操作
+ */
+
+// 引入 Vue 生命周期钩子和响应式 API
 import { ref, onMounted, watch, onUnmounted, onBeforeMount } from 'vue';
+
+// 引入路由
 import { useRouter } from 'vue-router';
+
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入 Element Plus 图标
 import { Operation } from '@element-plus/icons';
+
+// 引入 Vuex 状态管理
 import { useStore } from 'vuex';
+
+// 引入 Element Plus 消息组件
 import { ElMessage } from 'element-plus';
+
+// 引入剪贴板插件
 import useClipboard from 'vue-clipboard3';
+
+// 引入彩色图片组件
 import ColorImg from '@/components/ColorImg.vue';
+
+// 引入设备详情组件
 import DeviceDes from '../components/DeviceDes.vue';
+
+// 引入分页组件
 import Pageable from '../components/Pageable.vue';
+
+// 引入 axios
 import axios from '../http/axios';
+
+// 引入 Hub 设置组件
 import HubSettings from '../components/HubSettings.vue';
 
+// 获取 Vuex Store 实例
 const store = useStore();
+
+// 获取国际化翻译函数
 const { t: $t } = useI18n();
 
+// 初始化剪贴板
 const { toClipboard } = useClipboard();
+
+// 加载所有图片资源
 const img = import.meta.globEager('./../assets/img/*');
+
+// 获取路由实例
 const router = useRouter();
 const currentTab = ref('device');
 const timer = ref(null);

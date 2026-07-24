@@ -1,7 +1,19 @@
 <script setup>
+/**
+ * Header.vue - 顶部导航栏组件
+ * 包含项目切换、主题切换、语言切换、用户信息、密码修改、Token生成等功能
+ */
+
+// 引入 Vuex 状态管理
 import { useStore } from 'vuex';
+
+// 引入路由
 import { useRoute, useRouter } from 'vue-router';
+
+// 引入 Vue 生命周期钩子和响应式 API
 import { onBeforeMount, onMounted, ref, watch } from 'vue';
+
+// 引入 Element Plus 图标
 import {
   Fold,
   Expand,
@@ -9,24 +21,55 @@ import {
   HomeFilled,
   Setting,
 } from '@element-plus/icons';
+
+// 引入 Element Plus 消息组件
 import { ElMessage } from 'element-plus';
+
+// 引入语言配置列表
 import { localeList } from '@/config/locale';
+
+// 引入语言切换 hook
 import useLocale from '@/locales/useLocale';
+
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入剪贴板插件
 import useClipboard from 'vue-clipboard3';
+
+// 引入默认 Logo
 import defaultLogo from '../assets/logo.png';
+
+// 引入项目更新组件
 import ProjectUpdate from './ProjectUpdate.vue';
+
+// 引入 Logo
 import logo from '../assets/logo.png';
+
+// 引入 axios
 import axios from '../http/axios';
 
+// 初始化剪贴板
 const { toClipboard } = useClipboard();
 
+/**
+ * 响应式状态定义
+ */
+
+// 修改密码表单引用
 const changePwdForm = ref(null);
+
+// 修改密码表单数据
 const changePwd = ref({
-  oldPwd: '',
-  newPwd: '',
-  newPwdSec: '',
+  oldPwd: '', // 旧密码
+  newPwd: '', // 新密码
+  newPwdSec: '', // 确认新密码
 });
+
+/**
+ * 复制文本到剪贴板
+ * @param {string} value - 要复制的文本
+ */
 const copy = (value) => {
   try {
     toClipboard(value);
@@ -39,6 +82,14 @@ const copy = (value) => {
     });
   }
 };
+
+/**
+ * 密码确认校验规则
+ * 确保两次输入的新密码一致
+ * @param {Object} rule - 校验规则
+ * @param {string} value - 校验值
+ * @param {Function} callback - 回调函数
+ */
 const validatePass = (rule, value, callback) => {
   if (value === '') {
     callback(new Error($t('form.notEmpty')));
@@ -49,8 +100,17 @@ const validatePass = (rule, value, callback) => {
     callback();
   }
 };
+
+// 修改密码弹窗状态
 const dialogChangePwd = ref(false);
+
+// 新生成的 Token
 const tokenNew = ref('');
+
+/**
+ * 监听修改密码弹窗关闭事件
+ * 关闭时清空表单数据
+ */
 watch(dialogChangePwd, (newValue, oldValue) => {
   if (!newValue) {
     changePwd.value = {
@@ -60,6 +120,10 @@ watch(dialogChangePwd, (newValue, oldValue) => {
     };
   }
 });
+
+/**
+ * 生成新的 Token
+ */
 const generateToken = () => {
   axios
     .get('/controller/users/generateToken', {
@@ -74,6 +138,10 @@ const generateToken = () => {
       }
     });
 };
+
+/**
+ * 提交密码修改
+ */
 const changePwdSummit = () => {
   changePwdForm.value.validate((valid) => {
     if (valid) {
@@ -93,53 +161,113 @@ const changePwdSummit = () => {
     }
   });
 };
+
+// 用户信息弹窗状态
 const dialogUserInfo = ref(false);
+
+// 项目选择弹窗状态
 const dialogVisible = ref(false);
+
+// Token 弹窗状态
 const dialogToken = ref(false);
+
+// Token 有效期天数
 const day = ref(14);
+
+// 获取 Vuex Store 实例
 const store = useStore();
+
+// 获取路由实例
 const router = useRouter();
+
+// 获取当前路由信息
 const route = useRoute();
+
+// 项目列表数据
 const projectData = ref([]);
+
+// 当前主题
 const theme = ref('');
+
+/**
+ * 刷新项目列表
+ */
 const flush = () => {
   dialogVisible.value = false;
   getProjectList();
 };
+
+/**
+ * 获取项目列表
+ */
 const getProjectList = () => {
   axios.get('/controller/projects/list').then((resp) => {
     projectData.value = resp.data;
     store.commit('saveProjectList', projectData.value);
   });
 };
+
+/**
+ * 跳转到指定项目
+ * @param {Object} project - 项目对象
+ */
 const jump = (project) => {
   store.commit('saveProject', project);
   router.push({
     path: `/Home/${project.id}/ProjectIndex`,
   });
 };
+
+/**
+ * 跳转到指定路径
+ * @param {string} path - 路由路径
+ */
 const pushIndex = (path) => {
   router.push({
     path,
   });
 };
+
+/**
+ * 退出登录
+ */
 const logout = () => {
   store.commit('clearAuth');
   router.replace({ path: '/Login' });
 };
+
+/**
+ * 在新窗口打开 URL
+ * @param {string} url - 要打开的 URL
+ */
 const goToUrl = (url) => {
   window.open(url, '_blank');
 };
+
+/**
+ * 切换主题样式
+ * @param {string} t - 主题名称（'light' 或 'dark'）
+ */
 const toggleClass = (t) => {
   localStorage.setItem('SonicTheme', t);
   store.commit('saveTheme', theme.value);
   document.body.className = `sonic-${t}`;
 };
+
+/**
+ * 组件挂载前执行
+ * 初始化主题设置
+ */
 onBeforeMount(() => {
   theme.value = localStorage.getItem('SonicTheme')
     ? localStorage.getItem('SonicTheme')
     : 'light';
 });
+
+/**
+ * 组件挂载后执行
+ * 应用主题样式并加载项目列表
+ */
 onMounted(() => {
   toggleClass(theme.value);
   getProjectList();
@@ -147,6 +275,11 @@ onMounted(() => {
 
 // 国际化设置
 const { t: $t } = useI18n();
+
+/**
+ * 语言切换处理函数
+ * @param {Object} val - 选择的语言选项
+ */
 const changeLocaleHandler = function (val) {
   const { changeLocale } = useLocale(store);
   changeLocale(val.index);

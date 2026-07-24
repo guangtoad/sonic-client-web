@@ -1,27 +1,61 @@
 <script setup>
+/**
+ * GlobalParams.vue - 全局参数管理页面
+ * 展示全局参数列表、支持参数创建、编辑、删除操作
+ */
+
+// 引入 Vue 生命周期钩子和响应式 API
 import { onMounted, ref } from 'vue';
+
+// 引入路由
 import { useRoute } from 'vue-router';
+
+// 引入 Element Plus 消息组件
 import { ElMessage } from 'element-plus';
 
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入 axios
 import axios from '../http/axios';
 
+// 获取国际化翻译函数
 const { t: $t } = useI18n();
 
+// 获取当前路由信息
 const route = useRoute();
+
+// 弹窗显示状态
 const dialogVisible = ref(false);
+
+// 参数列表数据
 const pageData = ref([]);
+
+// 更新参数引用
 const updateGlobal = ref(null);
+
+/**
+ * 全局参数表单数据
+ */
 const globalParams = ref({
-  id: null,
-  projectId: route.params.projectId,
-  paramsKey: '',
-  paramsValue: '',
+  id: null, // 参数 ID（新增时为 null）
+  projectId: route.params.projectId, // 项目 ID
+  paramsKey: '', // 参数键
+  paramsValue: '', // 参数值
 });
+
+/**
+ * 编辑全局参数
+ * @param {number} id - 参数 ID
+ */
 const editGlobalParams = async (id) => {
   await open();
   await getGlobalInfo(id);
 };
+
+/**
+ * 打开参数弹窗（新增或编辑）
+ */
 const open = () => {
   globalParams.value = {
     id: null,
@@ -31,6 +65,10 @@ const open = () => {
   };
   dialogVisible.value = true;
 };
+
+/**
+ * 获取全局参数列表
+ */
 const getGlobalParamsList = () => {
   axios
     .get('/controller/globalParams/list', {
@@ -42,6 +80,11 @@ const getGlobalParamsList = () => {
       pageData.value = resp.data;
     });
 };
+
+/**
+ * 获取参数详情
+ * @param {number} id - 参数 ID
+ */
 const getGlobalInfo = (id) => {
   axios
     .get('/controller/globalParams', {

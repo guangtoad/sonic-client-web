@@ -1,33 +1,77 @@
 <script setup>
+/**
+ * ProjectUpdate.vue - 项目更新组件
+ * 用于创建和编辑项目信息，包括项目名称、描述、Logo、告警机器人配置等
+ */
+
+// 引入 Vue 生命周期钩子和响应式 API
 import { onMounted, ref } from 'vue';
+
+// 引入 Element Plus 消息组件
 import { ElMessage } from 'element-plus';
+
+// 引入路由
 import { useRoute, useRouter } from 'vue-router';
+
+// 引入 Vuex 状态管理
 import { useStore } from 'vuex';
+
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入 axios
 import axios from '../http/axios';
 
+// 获取国际化翻译函数
 const { t: $t } = useI18n();
+
+/**
+ * 定义组件属性
+ */
 const props = defineProps({
+  // 是否为更新模式（true: 编辑项目，false: 创建项目）
   isUpdate: Boolean,
 });
+
+// 获取 Vuex Store 实例
 const store = useStore();
+
+// 获取当前路由信息
 const route = useRoute();
+
+// 获取路由实例
 const router = useRouter();
+
+/**
+ * 项目数据对象
+ */
 const project = ref({
-  id: null,
-  projectName: '',
-  projectDes: '',
-  robotType: -1,
-  robotToken: '',
-  robotSecret: '',
-  projectImg: '',
-  globalRobot: true,
-  testsuiteAlertRobotIds: null,
+  id: null, // 项目 ID
+  projectName: '', // 项目名称
+  projectDes: '', // 项目描述
+  robotType: -1, // 机器人类型
+  robotToken: '', // 机器人 Token
+  robotSecret: '', // 机器人密钥
+  projectImg: '', // 项目图片 URL
+  globalRobot: true, // 是否全局告警机器人
+  testsuiteAlertRobotIds: null, // 测试套件告警机器人 ID 列表
 });
+
+// 项目表单引用
 const projectUpdateForm = ref(null);
+
+// 删除确认弹窗状态
 const dialogDel = ref(false);
+
+// 加载所有图片资源
 const img = import.meta.globEager('./../assets/img/*');
+
+// 告警机器人列表数据
 const robotData = ref([]);
+
+/**
+ * 获取告警机器人列表
+ */
 const getAlertRobots = () => {
   axios
     .get('/controller/alertRobots/listAll', {
@@ -42,6 +86,13 @@ const getAlertRobots = () => {
       }
     });
 };
+
+/**
+ * 上传前校验
+ * 只允许上传 jpg 和 png 格式的图片
+ * @param {File} file - 上传的文件
+ * @returns {boolean} 是否允许上传
+ */
 const beforeAvatarUpload = (file) => {
   if (file.name.endsWith('.jpg') || file.name.endsWith('.png')) {
     return true;
@@ -51,11 +102,20 @@ const beforeAvatarUpload = (file) => {
   });
   return false;
 };
+
+/**
+ * 超出限制提示
+ */
 const limitOut = () => {
   ElMessage.error({
     message: $t('androidRemoteTS.addOne'),
   });
 };
+
+/**
+ * 上传项目图片
+ * @param {Object} content - 上传内容对象，包含 file
+ */
 const upload = (content) => {
   const formData = new FormData();
   formData.append('file', content.file);
@@ -73,7 +133,13 @@ const upload = (content) => {
       }
     });
 };
+
+// 定义组件事件
 const emit = defineEmits(['flush']);
+
+/**
+ * 提交项目表单（创建或更新）
+ */
 const summit = () => {
   projectUpdateForm.value.validate((valid) => {
     if (valid) {
@@ -82,16 +148,24 @@ const summit = () => {
           ElMessage.success({
             message: resp.message,
           });
+          // 如果是更新模式，更新 Vuex 中的项目信息
           if (props.isUpdate) {
             store.commit('saveProject', project.value);
           }
+          // 触发刷新事件，通知父组件更新列表
           emit('flush');
         }
       });
     }
   });
 };
+
+// 全屏加载状态
 const fullscreenLoading = ref(false);
+
+/**
+ * 删除项目
+ */
 const delProject = () => {
   fullscreenLoading.value = true;
   axios
@@ -103,10 +177,16 @@ const delProject = () => {
           message: resp.message,
         });
         dialogDel.value = false;
+        // 跳转到首页
         router.push('/');
       }
     });
 };
+
+/**
+ * 组件挂载后执行
+ * 如果是更新模式，加载项目信息；加载告警机器人列表
+ */
 onMounted(() => {
   if (props.isUpdate) {
     project.value = JSON.parse(JSON.stringify(store.state.project));

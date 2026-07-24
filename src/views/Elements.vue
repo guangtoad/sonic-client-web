@@ -1,49 +1,109 @@
 <script setup>
+/**
+ * Elements.vue - 元素管理页面
+ * 展示元素列表、支持元素创建、编辑、删除操作
+ */
+
+// 引入路由
 import { useRoute } from 'vue-router';
+
+// 引入 Vue 生命周期钩子和响应式 API
 import { onMounted, ref, watch } from 'vue';
+
+// 引入 Element Plus 消息组件
 import { ElMessage } from 'element-plus';
+
+// 引入国际化
 import { useI18n } from 'vue-i18n';
+
+// 引入元素更新组件
 import ElementUpdate from '../components/ElementUpdate.vue';
+
+// 引入 axios
 import axios from '../http/axios';
+
+// 引入分页组件
 import Pageable from '../components/Pageable.vue';
 
+// 获取国际化翻译函数
 const { t: $t } = useI18n();
 
+// 获取当前路由信息
 const route = useRoute();
+
+// 元素弹窗显示状态
 const dialogElement = ref(false);
+
+// 元素 ID
 const elementId = ref(0);
+
+// 删除元素 ID
 const deleteId = ref(0);
+
+// 分页数据
 const pageData = ref({});
+
+// 每页条数
 const pageSize = ref(15);
+
+// 当前页码
 const pageCurrNum = ref(1);
+
+// 搜索关键词（名称）
 const name = ref('');
+
+// 搜索关键词（值）
 const value = ref('');
+
+// 元素类型列表
 const types = ref([]);
+
+// 步骤列表
 const stepList = ref([]);
+
+// 删除确认弹窗显示状态
 const checkDialog = ref(false);
 
+// 监听元素弹窗关闭，重置元素 ID
 watch(dialogElement, (newValue, oldValue) => {
   if (!newValue) {
     elementId.value = 0;
   }
 });
+
+// 监听删除确认弹窗关闭，重置删除 ID 和步骤列表
 watch(checkDialog, (newValue, oldValue) => {
   if (!newValue) {
     deleteId.value = 0;
     stepList.value = [];
   }
 });
+
+/**
+ * 编辑元素
+ * @param {number} id - 元素 ID
+ */
 const editElement = async (id) => {
   elementId.value = id;
   await open();
 };
+
+/**
+ * 打开元素弹窗
+ */
 const open = () => {
   dialogElement.value = true;
 };
+
+/**
+ * 刷新元素列表
+ */
 const flush = () => {
   dialogElement.value = false;
   getElementList();
 };
+
+// 模块 ID 列表
 const moduleIds = ref([]);
 const getElementList = (pageNum, pSize) => {
   pageSize.value = pSize || pageSize.value;
