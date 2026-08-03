@@ -10,6 +10,8 @@ import StepUpdate from './StepUpdate.vue';
 import StepDraggable from './StepDraggable.vue';
 import Pageable from './Pageable.vue';
 
+import { PLATFORM_TYPE } from '../config/constants';
+
 const { t: $t } = useI18n();
 const router = useRouter();
 const route = useRoute();
@@ -39,7 +41,7 @@ const tabValue = ref('select');
 const platformList = [
   { name: 'Android', value: 1, img: 'ANDROID' },
   { name: 'iOS', value: 2, img: 'IOS' },
-  { name: 'HarmonyOS', value: 3, img: 'HMOS' },
+  { name: 'HarmonyOS', value: PLATFORM_TYPE.HARMONYOS, img: 'HMOS' },
   
 ];
 const getImg = (name) => {

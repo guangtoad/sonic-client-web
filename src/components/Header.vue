@@ -28,6 +28,9 @@ import { ElMessage } from 'element-plus';
 // 引入语言配置列表
 import { localeList } from '@/config/locale';
 
+// 引入平台类型常量
+import { PLATFORM_TYPE } from '@/config/constants';
+
 // 引入语言切换 hook
 import useLocale from '@/locales/useLocale';
 

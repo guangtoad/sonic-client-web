@@ -16,6 +16,9 @@ import { useI18n } from 'vue-i18n';
 // 引入测试用例列表组件
 import TestCaseList from '../components/TestCaseList.vue';
 
+// 引入平台类型常量
+import { PLATFORM_TYPE } from '@/config/constants';
+
 // 获取国际化翻译函数
 const { t: $t } = useI18n();
 
@@ -29,7 +32,7 @@ const caseList = ref(null);
 const projectId = ref(parseInt(route.params.projectId));
 
 // 平台标识：3 表示 HarmonyOS 平台
-const platform = 3;
+const platform = PLATFORM_TYPE.HARMONYOS;
 </script>
 
 <template>

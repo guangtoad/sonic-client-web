@@ -16,6 +16,43 @@
  *   You should have received a copy of the GNU Affero General Public License
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+/**
+ * AndroidRemote.vue — Android 设备远程控制页面组件
+ *
+ * 【组件职责】
+ *   作为 Sonic 云真机平台的 Android 远程调试主界面，提供以下能力：
+ *   1. 屏幕投射：通过 Scrcpy（推荐）或 Minicap 两种模式实时投射设备屏幕。
+ *   2. 远程触控：将鼠标事件转换为设备的 touch / tap / swipe / longPress 指令。
+ *   3. 元素检查：拉取当前页面的 UI 控件树（含 WebView），支持 XPath 定位、元素截图、保存为测试元素。
+ *   4. 应用管理：展示应用列表，支持安装（上传 apk）、卸载、启动、强制停止。
+ *   5. 终端 & Logcat：通过 WebSocket 执行 shell 命令、实时获取 logcat 日志并支持下载。
+ *   6. 代理抓包：启动 HTTP 代理并安装证书，用于抓取设备网络请求。
+ *   7. 文件管理：向设备推送文件 / 从设备拉取文件。
+ *   8. 性能监控：采集 CPU、内存、FPS 等性能指标。
+ *   9. Poco 框架：对接 Poco 游戏自动化引擎，获取游戏 UI 树。
+ *  10. WebView 调试：转发 WebView 调试端口，在 iframe 中打开 Chrome DevTools Inspector。
+ *  11. 实时音频：通过 AudioProcessor 推流设备音频。
+ *  12. 测试用例：关联用例并在设备上远程执行，实时回传步骤日志。
+ *  13. 空闲检测：超过阈值无操作时自动断开连接，释放设备。
+ *
+ * 【通信架构】
+ *   组件维护 3 条 WebSocket + 1 条音频 WebSocket，全部由 Agent 转发到目标设备：
+ *   - websocket           主控制通道：元素树、应用管理、代理、文件操作、驱动、测试步骤等。
+ *   - screenWebsocket     屏幕画面通道：由 Scrcpy 实例管理，推送 H.264 / JPEG 帧。
+ *   - terminalWebsocket   终端通道：shell 命令、logcat、WiFi 列表。
+ *   - audioPlayer.ws      音频通道：通过 AudioProcessor 独立连接。
+ *
+ * 【执行流程】
+ *   onMounted
+ *     ├─ 获取项目信息（store 或接口）
+ *     ├─ getDeviceById(deviceId)  → 获取设备 → 获取 Agent → openSocket(...)
+ *     │     ├─ 创建 websocket            （主控制）
+ *     │     ├─ new Scrcpy(...)          （屏幕画面，内部创建 screenWebsocket）
+ *     │     └─ 创建 terminalWebsocket    （终端）
+ *     ├─ getRemoteTimeout / getIdleTimeout  → 读取超时配置
+ *     └─ checkAlive()  → 定时器：空闲超时则 close()
+ *   onBeforeUnmount → close()  关闭所有连接并释放资源
+ */
 import { useRoute, useRouter } from 'vue-router';
 import {
   computed,
@@ -37,6 +74,7 @@ import ElementUpdate from '@/components/ElementUpdate.vue';
 import Pageable from '@/components/Pageable.vue';
 import PackageList from '@/components/PackageList.vue';
 import defaultLogo from '@/assets/logo.png';
+// Element Plus 图标集合：用于工具栏按钮、Tab 标签等处的图标渲染
 import {
   VideoPause,
   Refresh,
@@ -82,105 +120,137 @@ import PocoPane from '../../components/PocoPane.vue';
 import AndroidPerf from '../../components/AndroidPerf.vue';
 import RemotePageHeader from '../../components/RemotePageHeader.vue';
 
-const pocoPaneRef = ref(null);
-const androidPerfRef = ref(null);
-const { t: $t } = useI18n();
+// ======================== 组合式 API 实例与子组件引用 ========================
+const pocoPaneRef = ref(null);       // Poco 面板子组件引用，用于调用 setSize / setPocoData
+const androidPerfRef = ref(null);    // 性能监控面板子组件引用，用于调用 setData
+const { t: $t } = useI18n();         // 国际化翻译函数
 
-const { toClipboard } = useClipboard();
-const route = useRoute();
-const store = useStore();
-const router = useRouter();
-const wifiList = ref([]);
-const currentWifi = ref('');
-const isConnectWifi = ref(false);
-const pocoLoading = ref(false);
-const proxyWebPort = ref(0);
-const proxyConnPort = ref(0);
-const filterAppText = ref('');
-const iFrameHeight = ref(0);
-const terminalHeight = ref(0);
-const caseList = ref(null);
-const loading = ref(false);
-const driverLoading = ref(false);
-const remoteAdbLoading = ref(true);
-const appList = ref([]);
-const device = ref({});
-const agent = ref({});
-const screenUrls = ref([]);
-const uploadUrl = ref('');
-const text = ref({ content: '' });
-const isMultiWindows = ref(false);
-const isIgnore = ref(true);
-const isVisible = ref(false);
-let imgWidth = 0;
-let imgHeight = 0;
-// 旋转状态 // 0 90 180 270
+const { toClipboard } = useClipboard(); // 剪贴板复制
+const route = useRoute();               // 当前路由（取 deviceId 参数）
+const store = useStore();               // Vuex 状态（取项目信息）
+const router = useRouter();             // 路由跳转（错误时回退）
+
+// ======================== 代理抓包 / WiFi 相关 ========================
+const wifiList = ref([]);            // 扫描到的 WiFi 列表
+const currentWifi = ref('');         // 当前连接的 WiFi SSID
+const isConnectWifi = ref(false);    // 设备是否已连接 WiFi
+const pocoLoading = ref(false);      // Poco 树获取中
+const proxyWebPort = ref(0);         // 代理 Web 端口（iframe 调试用）
+const proxyConnPort = ref(0);        // 代理连接端口
+
+// ======================== 应用列表 / 终端 ========================
+const filterAppText = ref('');       // 应用列表搜索关键字
+const iFrameHeight = ref(0);         // WebView 调试 iframe 高度
+const terminalHeight = ref(0);       // 终端面板高度
+const caseList = ref(null);          // 测试用例列表组件引用
+const loading = ref(false);          // 全局加载态（切画质/旋转等）
+const driverLoading = ref(false);    // Appium 驱动启动中
+const remoteAdbLoading = ref(true);  // 远程 ADB 信息加载中
+const appList = ref([]);             // 设备上已安装的应用列表
+
+// ======================== 设备与 Agent 信息 ========================
+const device = ref({});              // 当前设备信息（udId、model、password 等）
+const agent = ref({});               // 设备所属 Agent 信息（host、port、secretKey）
+
+// ======================== 截图 / 上传 ========================
+const screenUrls = ref([]);          // 快照截图列表（页面右侧展示）
+const uploadUrl = ref('');           // 上传后返回的 URL
+const text = ref({ content: '' });   // 预留文本
+
+// ======================== 元素树过滤选项 ========================
+const isMultiWindows = ref(false);   // 获取元素树时是否包含多窗口
+const isIgnore = ref(true);          // 是否忽略不可见元素
+const isVisible = ref(false);        // 是否仅获取可见元素
+
+// ======================== 触控 / 屏幕尺寸（非响应式，频繁读取无需触发渲染） ========================
+let imgWidth = 0;                    // 设备屏幕逻辑宽度（px）
+let imgHeight = 0;                   // 设备屏幕逻辑高度（px）
+// 旋转状态 // 0 90 180 270；-1 表示初始未知
 const directionStatus = {
   value: -1,
 };
-let moveX = 0;
-let moveY = 0;
-let isFixTouch = false;
-let isPress = false;
-let loop = null;
-let time = 0;
-let isLongPress = false;
-let mouseMoveTime = 0;
-let touchWrapper = null;
-const pic = ref('高');
+let moveX = 0;                       // 鼠标按下时的起始 x（用于判断 tap / swipe）
+let moveY = 0;                       // 鼠标按下时的起始 y
+let isFixTouch = false;              // 是否使用 ADB 触控模式（修复触摸）
+let isPress = false;                 // 当前是否处于按下状态（Minicap 触控）
+let loop = null;                     // 长按检测定时器
+let time = 0;                        // 按下累计时长（ms）
+let isLongPress = false;             // 是否已触发长按
+let mouseMoveTime = 0;               // 鼠标移动节流计数
+let touchWrapper = null;             // 触控事件目标 DOM（canvas 或 video 元素）
+
+// ======================== 屏幕投射模式 ========================
+const pic = ref('高');               // 当前画质（高/中/低/固定）
 const _screenMode = window.localStorage.getItem('screenMode');
 const screenMode = ref(_screenMode || 'Scrcpy'); // Scrcpy,Minicap
-const elementLoading = ref(false);
-const isShowImg = ref(false);
-const isDriverFinish = ref(false);
-const imgUrl = ref('');
-const activity = ref('');
-const webViewData = ref([]);
-const isShowTree = ref(false);
-const elementData = ref([]);
-const elementDetail = ref(null);
-const elementScreenLoading = ref(false);
-const tree = ref(null);
-const currentId = ref([]);
-const filterText = ref('');
-const project = ref(null);
-const testCase = ref({});
-const activeTab = ref('main');
-const activeTab2 = ref('step');
-const stepLog = ref([]);
-const debugLoading = ref(false);
-const checkElementLoading = ref(false);
-const dialogElement = ref(false);
-const dialogImgElement = ref(false);
-const imgElementUrl = ref(null);
-const updateImgEle = ref(null);
-const webViewListDetail = ref([]);
-const isWebView = ref(true);
-const iframeUrl = ref('');
-const title = ref('');
-const webViewLoading = ref(false);
-const cmdInput = ref('');
-const cmdOutPut = ref([]);
-const cmdUser = ref('');
-const logcatOutPut = ref([]);
-const terScroll = ref(null);
-const logcatScroll = ref(null);
-const cmdIsDone = ref(true);
-const uploadLoading = ref(false);
-const remoteAdbUrl = ref('');
+
+// ======================== 元素检查 ========================
+const elementLoading = ref(false);   // 元素树获取中
+const isShowImg = ref(false);        // 是否显示元素调试大图
+const isDriverFinish = ref(false);   // Appium 驱动是否已启动
+const imgUrl = ref('');              // 元素调试大图 URL
+const activity = ref('');            // 当前 Activity 名称
+const webViewData = ref([]);         // WebView 列表
+const isShowTree = ref(false);       // 是否展示元素树
+const elementData = ref([]);         // 元素树数据
+const elementDetail = ref(null);     // 当前选中元素详情
+const elementScreenLoading = ref(false); // 元素截图获取中
+const tree = ref(null);              // el-tree 组件引用
+const currentId = ref([]);           // 当前选中的节点 id
+const filterText = ref('');          // 元素树过滤关键字
+
+// ======================== 测试用例 / 步骤调试 ========================
+const project = ref(null);           // 当前项目
+const testCase = ref({});            // 关联的测试用例
+const activeTab = ref('main');       // 右侧主 Tab
+const activeTab2 = ref('step');      // 调试子 Tab（step / log）
+const stepLog = ref([]);             // 步骤执行日志
+const debugLoading = ref(false);     // 步骤执行中
+const checkElementLoading = ref(false); // 元素定位校验中
+
+// ======================== 元素保存对话框 ========================
+const dialogElement = ref(false);    // 添加元素对话框
+const dialogImgElement = ref(false); // 元素截图保存对话框
+const imgElementUrl = ref(null);     // 元素截图 URL
+const updateImgEle = ref(null);      // 表单引用
+
+// ======================== WebView 调试 ========================
+const webViewListDetail = ref([]);   // WebView 调试端口列表
+const isWebView = ref(true);         // true=显示 WebView 列表；false=显示 iframe
+const iframeUrl = ref('');           // Chrome DevTools iframe 地址
+const title = ref('');               // iframe 标题
+const webViewLoading = ref(false);   // WebView 列表获取中
+
+// ======================== 终端命令 ========================
+const cmdInput = ref('');            // 命令输入框
+const cmdOutPut = ref([]);           // 命令输出（含 HTML 着色）
+const cmdUser = ref('');             // shell 提示符中的用户名
+const logcatOutPut = ref([]);        // logcat 输出
+const terScroll = ref(null);         // 终端滚动容器引用
+const logcatScroll = ref(null);      // logcat 滚动容器引用
+const cmdIsDone = ref(true);         // 上一条命令是否执行完毕
+const uploadLoading = ref(false);    // 上传中
+const remoteAdbUrl = ref('');        // 远程 ADB 连接地址
 const logcatFilter = ref({
-  level: 'E',
-  filter: '',
+  level: 'E',                        // 日志级别过滤
+  filter: '',                        // 关键字过滤
 });
-let oldBlob;
+let oldBlob;                         // 上一帧屏幕 Blob（Minicap 模式快速截图复用）
+// 待保存的元素对象（新增元素对话框使用）
 const element = ref({
   id: null,
   moduleId: 0,
   eleName: '',
-  eleType: 'image',
+  eleType: 'image',  // 默认图片元素
   eleValue: '',
   projectId: 0,
 });
+/**
+ * 计算两个坐标点（"x1,y1" / "x2,y2"）的中心点
+ * @param {string} b1 - 起点 "x,y"
+ * @param {string} b2 - 终点 "x,y"
+ * @returns {string} 中心点 "x,y"
+ */
 const computedCenter = (b1, b2) => {
   const x1 = b1.substring(0, b1.indexOf(','));
   const y1 = b1.substring(b1.indexOf(',') + 1);
@@ -190,6 +260,14 @@ const computedCenter = (b1, b2) => {
   const y = parseInt((parseInt(y1) + parseInt(y2)) / 2);
   return `${x},${y}`;
 };
+/**
+ * 顶部 Tab 切换时的懒加载处理
+ * - proxy：首次进入代理 Tab 时刷新 WiFi 列表
+ * - apps / perfmon：首次进入时刷新应用列表
+ * - terminal：计算终端面板高度
+ * - webview：首次进入时获取 WebView 转发列表
+ * @param {Object} e - el-tabs 的 TabPane 上下文
+ */
 const switchTabs = (e) => {
   if (e.props.name === 'proxy') {
     getWifiList();
@@ -208,6 +286,7 @@ const switchTabs = (e) => {
     }
   }
 };
+/** 性能监控：开始采集指定应用的性能数据（通过主控制通道下发） */
 const startPerfmon = (bundleId) => {
   websocket.send(
     JSON.stringify({
@@ -216,6 +295,7 @@ const startPerfmon = (bundleId) => {
     })
   );
 };
+/** 性能监控：停止采集性能数据 */
 const stopPerfmon = () => {
   websocket.send(
     JSON.stringify({
@@ -223,12 +303,15 @@ const stopPerfmon = () => {
     })
   );
 };
+// 预加载所有设备品牌图片（用于应用图标/设备图等）
 const img = import.meta.globEager('../../assets/img/*');
-let websocket = null;
-let screenWebsocket = null;
-let __Scrcpy = null; // 实例
-let terminalWebsocket = null;
+// ======================== WebSocket 连接（组件级全局，非响应式） ========================
+let websocket = null;            // 主控制通道
+let screenWebsocket = null;      // 屏幕画面通道（由 Scrcpy 实例创建并持有）
+let __Scrcpy = null; // 实例     // Scrcpy 实例，负责解码 H.264 / 渲染 JPEG 帧
+let terminalWebsocket = null;    // 终端通道（shell 命令、logcat、WiFi）
 
+// 由父级布局组件传入的属性：用于支持左右分栏拖拽与画布信息
 defineProps({
   tabPosition: String,
   canvasRectInfo: Object,
@@ -240,6 +323,13 @@ defineProps({
   lineMouseleave: Function,
 });
 
+/**
+ * 打开 WebView 调试 iframe
+ * 切换 isWebView 为 false，构造 Chrome DevTools Inspector 的 ws 地址
+ * @param {number} port - WebView 调试转发端口
+ * @param {string} id - WebView 目标 id
+ * @param {string} transTitle - iframe 标题
+ */
 const tabWebView = (port, id, transTitle) => {
   title.value = transTitle;
   isWebView.value = false;
@@ -248,6 +338,10 @@ const tabWebView = (port, id, transTitle) => {
     iFrameHeight.value = document.body.clientHeight - 150;
   });
 };
+/**
+ * 保存元素截图为图片类型元素
+ * 校验表单后调用 PUT /controller/elements 接口
+ */
 const saveEle = () => {
   updateImgEle.value.validate((valid) => {
     if (valid) {
@@ -267,11 +361,12 @@ const saveEle = () => {
 };
 /**
  * app列表处理
+ * 由于设备返回的 app 列表可能很大，前端自行做分页（每页 7 条）
  */
-const appListPageData = ref([]);
-const currAppListPageIndex = ref(0);
-const currAppListPageData = ref([]);
-// 转换分页数组
+const appListPageData = ref([]);          // 分页后的二维数组
+const currAppListPageIndex = ref(0);      // 当前页索引
+const currAppListPageData = ref([]);      // 当前页数据
+// 将一维数组切分为每页 7 条的二维数组，并更新当前页
 const transformPageable = (data) => {
   const pageSize = 7;
   const len = data.length;
@@ -289,10 +384,12 @@ const transformPageable = (data) => {
   }
   currAppListPageData.value = appListPageData.value[currAppListPageIndex.value];
 };
+/** 切换应用列表分页 */
 const changeAppListPage = (pageNum) => {
   currAppListPageIndex.value = pageNum - 1;
   currAppListPageData.value = appListPageData.value[currAppListPageIndex.value];
 };
+/** 计算属性：按搜索关键字过滤应用列表并重新分页 */
 const filterTableData = computed(() => {
   const list = appList.value.filter(
     (data) =>
@@ -303,12 +400,14 @@ const filterTableData = computed(() => {
   transformPageable(list);
   return list;
 });
+/** 切换触控模式：Minicap 原生触摸 ↔ ADB 修复触摸（isFixTouch） */
 const fixTouch = () => {
   ElMessage.success({
     message: $t('androidRemoteTS.repairedSuccess'),
   });
   isFixTouch = !isFixTouch;
 };
+/** 修复旋转方向：在横竖屏之间切换 directionStatus */
 const fixOri = () => {
   ElMessage.success({
     message: $t('androidRemoteTS.repairedSuccess'),
@@ -319,18 +418,27 @@ const fixOri = () => {
     directionStatus.value = 0;
   }
 };
+/** 从 WebView iframe 返回 WebView 列表视图 */
 const switchIsWebView = () => {
   isWebView.value = true;
 };
+/** 关联测试用例到当前调试会话 */
 const selectCase = (val) => {
   ElMessage.success({
     message: $t('androidRemoteTS.associationSuccess'),
   });
   testCase.value = val;
 };
+/** 取消关联的测试用例 */
 const removeCase = () => {
   testCase.value = {};
 };
+/**
+ * 根据品牌名获取对应的品牌图片
+ * 兼容 meizu/LENOVO 大小写，找不到时回退到 unName.jpg
+ * @param {string} name - 品牌名
+ * @returns {string} 图片 URL
+ */
 const getImg = (name) => {
   let result;
   if (name === 'meizu') {
@@ -346,18 +454,25 @@ const getImg = (name) => {
   }
   return result;
 };
-// 选中安装包列表中的item后响应事件
+/** 选中安装包列表中的 item 后触发安装 */
 const selectPackage = (val) => {
   ElMessage.success({
     message: $t('androidRemoteTS.startInstall'),
   });
   install(val);
 };
-// 三种安装包方式tab选中态
+// 三种安装包方式tab选中态（pushInstallPane / uploadInstallPane / scanInstallPane）
 const activeIntallTab = ref('pushInstallPane');
+// 监听元素树过滤关键字，实时调用 el-tree 的 filter
 watch(filterText, (newValue, oldValue) => {
   tree.value.filter(newValue);
 });
+/**
+ * el-tree 过滤节点方法：匹配 label 或 resource-id
+ * @param {string} value - 过滤关键字
+ * @param {Object} data - 节点数据
+ * @returns {boolean} 是否保留该节点
+ */
 const filterNode = (value, data) => {
   if (!value) return true;
   return (
@@ -367,6 +482,12 @@ const filterNode = (value, data) => {
       : false)
   );
 };
+/**
+ * 根据元素详情生成候选 XPath 列表
+ * 优先级：resource-id > text（精确+包含）> content-desc（精确+包含）
+ * @param {Object} elementDetail - 元素详情对象
+ * @returns {string[]} XPath 候选数组
+ */
 const findBestXpath = (elementDetail) => {
   const result = [];
   if (elementDetail['resource-id']) {
@@ -390,6 +511,7 @@ const findBestXpath = (elementDetail) => {
   }
   return result;
 };
+/** 下载图片：fetch 转 blob 后通过 <a> 触发下载 */
 const downloadImg = (url) => {
   const time = new Date().getTime();
   const link = document.createElement('a');
@@ -403,6 +525,7 @@ const downloadImg = (url) => {
       document.body.removeChild(link);
     });
 };
+/** 复制文本到剪贴板并提示结果 */
 const copy = (value) => {
   try {
     toClipboard(value);
@@ -415,6 +538,7 @@ const copy = (value) => {
     });
   }
 };
+/** 打开"添加元素"对话框，预填元素类型和值 */
 const toAddElement = (eleType, eleValue) => {
   if (project.value) {
     element.value.eleType = eleType;
@@ -422,9 +546,15 @@ const toAddElement = (eleType, eleValue) => {
     dialogElement.value = true;
   }
 };
+/** 清空所有快照截图 */
 const removeScreen = () => {
   screenUrls.value = [];
 };
+/**
+ * 从 Scrcpy video 元素截图（Minicap 模式无 oldBlob 时使用）
+ * 根据旋转方向计算输出宽高，drawImage 后输出 dataURL
+ * @returns {string} 图片的 dataURL（PNG）
+ */
 const getVideoScreenshot = () => {
   const canvas = document.createElement('canvas');
   const canvasCtx = canvas.getContext('2d');
@@ -462,6 +592,7 @@ const getVideoScreenshot = () => {
   );
   return canvas.toDataURL('image/png', 1);
 };
+/** 快速截图：优先复用上一帧 oldBlob，否则从 video 截图，加入快照列表 */
 const quickCap = () => {
   let imageUrl;
   if (oldBlob) {
@@ -475,6 +606,7 @@ const quickCap = () => {
   screenUrls.value.push(imageUrl);
   img.src = imageUrl;
 };
+/** 获取当前画面图片 URL（优先 oldBlob，否则 video 截图） */
 const getImgUrl = () => {
   let imageUrl;
   if (oldBlob) {
@@ -486,6 +618,7 @@ const getImgUrl = () => {
   }
   return imageUrl;
 };
+/** 设置元素调试大图：获取截图后写入 imgUrl，并按图片尺寸调整 canvas */
 const setImgData = () => {
   const imageUrl = getImgUrl();
   const img = new Image();
@@ -498,6 +631,17 @@ const setImgData = () => {
   };
   isShowImg.value = true;
 };
+/**
+ * 建立全部 WebSocket 连接
+ * 1. websocket          — 主控制通道（元素树、应用、代理、文件、驱动、步骤）
+ * 2. __Scrcpy 实例      — 屏幕画面通道（内部创建 screenWebsocket）
+ * 3. terminalWebsocket  — 终端通道（shell、logcat、WiFi）
+ * 建立后绑定 onmessage 回调，并标记 driverLoading
+ * @param {string} host  - Agent 主机
+ * @param {number} port  - Agent 端口
+ * @param {string} key   - Agent secretKey
+ * @param {string} udId  - 设备 udId
+ */
 const openSocket = (host, port, key, udId) => {
   if ('WebSocket' in window) {
     //
@@ -506,6 +650,7 @@ const openSocket = (host, port, key, udId) => {
         'SonicToken'
       )}`
     );
+    console.log(`WebSocket connect .. ${host}:${port}`);
     //
     __Scrcpy = new Scrcpy({
       socketURL: `ws://${host}:${port}/websockets/android/screen/${key}/${udId}/${localStorage.getItem(
@@ -532,6 +677,7 @@ const openSocket = (host, port, key, udId) => {
   terminalWebsocket.onclose = (e) => {};
   driverLoading.value = true;
 };
+/** 通过终端通道发送 logcat 采集请求（带级别和关键字过滤） */
 const sendLogcat = () => {
   terminalWebsocket.send(
     JSON.stringify({
@@ -541,6 +687,7 @@ const sendLogcat = () => {
     })
   );
 };
+/** 通过终端通道请求 WiFi 列表 */
 const getWifiList = () => {
   terminalWebsocket.send(
     JSON.stringify({
@@ -548,9 +695,11 @@ const getWifiList = () => {
     })
   );
 };
+/** 清空 logcat 输出 */
 const clearLogcat = () => {
   logcatOutPut.value = [];
 };
+/** 停止 logcat 采集 */
 const stopLogcat = () => {
   terminalWebsocket.send(
     JSON.stringify({
@@ -558,6 +707,7 @@ const stopLogcat = () => {
     })
   );
 };
+/** 保存 logcat：将日志数组拼接为文本并下载为 .log 文件（文件名含机型和时间） */
 const saveLogcat = () => {
   if (logcatOutPut.value && Array.isArray(logcatOutPut.value)) {
     const logContent = logcatOutPut.value.join('\n');
@@ -579,6 +729,7 @@ const saveLogcat = () => {
   }
 };
 
+/** 发送 shell 命令：校验非空且上一条已完成后，写入提示符并发送到终端通道 */
 const sendCmd = () => {
   if (cmdInput.value.length > 0 && cmdIsDone.value === true) {
     cmdIsDone.value = false;
@@ -598,9 +749,11 @@ const sendCmd = () => {
     cmdInput.value = '';
   }
 };
+/** 清空命令输出 */
 const clearCmd = () => {
   cmdOutPut.value = [];
 };
+/** 强制停止当前命令执行 */
 const stopCmd = () => {
   cmdIsDone.value = true;
   terminalWebsocket.send(
@@ -609,6 +762,11 @@ const stopCmd = () => {
     })
   );
 };
+/**
+ * 终端通道消息分发器
+ * 处理 WiFi 列表、应用列表增量、logcat（含着色）、shell 命令输出、错误等
+ * @param {MessageEvent} message - WebSocket 消息
+ */
 const terminalWebsocketOnmessage = (message) => {
   switch (JSON.parse(message.data).msg) {
     case 'wifiListDetail': {
@@ -659,6 +817,12 @@ const terminalWebsocketOnmessage = (message) => {
       break;
   }
 };
+/**
+ * 屏幕画面通道消息分发器
+ * - Blob（二进制）：Minicap 模式的 JPEG 帧，绘制到 canvas
+ * - JSON 文本：旋转、支持性错误、尺寸、截图完成、错误等控制消息
+ * @param {MessageEvent} message - WebSocket 消息
+ */
 const screenWebsocketOnmessage = (message) => {
   // console.log('screenWebsocketOnmessage', message.data);
   if (typeof message.data === 'object') {
@@ -725,6 +889,13 @@ const screenWebsocketOnmessage = (message) => {
     }
   }
 };
+/**
+ * 主控制通道消息分发器（核心）
+ * 处理：性能数据、Poco 树、代理结果、文件拉取/推送、剪贴板、远程 ADB、
+ *       元素树、安装/卸载结果、驱动状态、步骤日志、定位校验、WebView 转发、
+ *       元素截图、错误等
+ * @param {MessageEvent} message - WebSocket 消息
+ */
 const websocketOnmessage = (message) => {
   switch (JSON.parse(message.data).msg) {
     case 'perfDetail':
@@ -899,10 +1070,12 @@ const websocketOnmessage = (message) => {
     }
   }
 };
-const inputValue = ref('');
-const inputBox = ref(null);
-const inputBoxStyle = ref({});
-const paste = ref('');
+// ======================== 文本输入 / 剪贴板 ========================
+const inputValue = ref('');        // 远程输入框文本
+const inputBox = ref(null);        // 输入框 DOM 引用（用于自动聚焦）
+const inputBoxStyle = ref({});     // 输入框浮动定位样式
+const paste = ref('');             // 设备剪贴板内容
+/** 输入框内容变化时发送文本到设备 */
 const changeInputHandle = () => {
   if (inputValue.value) {
     websocket.send(
@@ -914,6 +1087,7 @@ const changeInputHandle = () => {
     inputValue.value = '';
   }
 };
+/** 发送退格键（CODE_AC_BACK）到设备 */
 const deleteInputHandle = () => {
   websocket.send(
     JSON.stringify({
@@ -922,6 +1096,7 @@ const deleteInputHandle = () => {
     })
   );
 };
+/** 设置设备剪贴板内容 */
 const setPasteboard = (text) => {
   websocket.send(
     JSON.stringify({
@@ -933,6 +1108,7 @@ const setPasteboard = (text) => {
     message: $t('IOSRemote.clipboard.SentSuccessfully'),
   });
 };
+/** 获取设备剪贴板内容（结果通过 paste 消息回传） */
 const getPasteboard = () => {
   websocket.send(
     JSON.stringify({
@@ -940,6 +1116,7 @@ const getPasteboard = () => {
     })
   );
 };
+/** 发送回车键（CODE_AC_ENTER）到设备 */
 const enterInputHandle = () => {
   websocket.send(
     JSON.stringify({
@@ -948,6 +1125,7 @@ const enterInputHandle = () => {
     })
   );
 };
+/** 启动 Appium 驱动（下发 openDriver，结果由 openDriver 消息回传） */
 const openDriver = () => {
   driverLoading.value = true;
   websocket.send(
@@ -957,6 +1135,7 @@ const openDriver = () => {
     })
   );
 };
+/** 关闭 Appium 驱动 */
 const closeDriver = () => {
   isDriverFinish.value = false;
   websocket.send(
@@ -969,6 +1148,11 @@ const closeDriver = () => {
     message: $t('androidRemoteTS.code.closeDriverMessage'),
   });
 };
+/**
+ * 计算鼠标事件对应的设备坐标（Minicap 触控模式）
+ * 根据旋转方向（0/90/180/270）做坐标轴变换，并设置输入框浮动位置
+ * @returns {{x:number, y:number}} 设备坐标系下的 x, y
+ */
 const getCurLocation = () => {
   let x;
   let y;
@@ -1007,6 +1191,11 @@ const getCurLocation = () => {
     y,
   };
 };
+/**
+ * 计算鼠标事件对应的设备坐标（ADB 修复触控模式）
+ * 与 getCurLocation 类似，但旋转 90/270 时直接交换 x/y（不做翻转）
+ * @returns {{x:number, y:number}} 设备坐标系下的 x, y
+ */
 const getCurLocationForAdb = () => {
   let x;
   let y;
@@ -1044,6 +1233,11 @@ const getCurLocationForAdb = () => {
     y,
   };
 };
+/**
+ * 鼠标抬起事件
+ * - Minicap 模式：发送 touch up，并聚焦输入框
+ * - ADB 模式：根据是否移动判断 tap / swipe，长按则跳过 tap
+ */
 const mouseup = (event) => {
   if (!isFixTouch) {
     if (isPress) {
@@ -1085,6 +1279,7 @@ const mouseup = (event) => {
     isLongPress = false;
   }
 };
+/** 鼠标离开屏幕区域：清除长按定时器 / 发送 touch up */
 const mouseleave = () => {
   if (isFixTouch) {
     clearInterval(loop);
@@ -1099,6 +1294,11 @@ const mouseleave = () => {
     );
   }
 };
+/**
+ * 鼠标按下事件
+ * - Minicap 模式：发送 touch down + 坐标
+ * - ADB 模式：记录起点并启动 500ms 定时器，超过 1s 触发 longPress
+ */
 const mousedown = (event) => {
   if (!isFixTouch) {
     // 安卓高版本
@@ -1130,6 +1330,7 @@ const mousedown = (event) => {
     }, 500);
   }
 };
+/** 鼠标移动事件（Minicap 模式）：节流后发送 touch move + 坐标 */
 const mousemove = (event) => {
   if (!isFixTouch) {
     if (isPress) {
@@ -1148,6 +1349,10 @@ const mousemove = (event) => {
     }
   }
 };
+/**
+ * 元素调试大图上的触摸事件：根据点击坐标查找命中的元素节点
+ * 并在元素树中选中该节点（最小面积优先，相同面积优先选有 text 的）
+ */
 const touchstart = async (event) => {
   const debugPic = document.getElementById('debugPic');
   const rect = debugPic.getBoundingClientRect();
@@ -1175,6 +1380,12 @@ const touchstart = async (event) => {
   });
   await handleNodeClick(tree.value.getCurrentNode());
 };
+/**
+ * 从命中的元素列表中找出面积最小的节点（最精确的命中）
+ * 面积相同时优先选择有 text 属性的节点
+ * @param {Array} data - findElementByPoint 返回的命中列表
+ * @returns {number|null} 选中节点的 id
+ */
 const findMinSize = (data) => {
   if (data.length === 0) {
     return null;
@@ -1193,6 +1404,14 @@ const findMinSize = (data) => {
   currentId.value = [result.ele.id];
   return result.ele.id;
 };
+/**
+ * 递归查找坐标 (x,y) 命中的所有元素节点
+ * 通过 bStart/bEnd 边界框判断命中，递归遍历 children
+ * @param {Array} ele - 元素树（子树）
+ * @param {number} x - 设备坐标 x
+ * @param {number} y - 设备坐标 y
+ * @returns {Array} 命中元素列表（含 ele 和 size）
+ */
 const findElementByPoint = (ele, x, y) => {
   const result = [];
   for (const i in ele) {
@@ -1225,12 +1444,18 @@ const findElementByPoint = (ele, x, y) => {
   }
   return result;
 };
+/** 元素树节点点击：更新 elementDetail 并在画布上高亮绘制 */
 const handleNodeClick = (data) => {
   if (data !== null) {
     elementDetail.value = data.detail;
     print(data);
   }
 };
+/**
+ * 在元素调试画布上绘制元素高亮框
+ * 使用随机颜色半透明填充，根据旋转方向调整坐标映射
+ * @param {Object} data - 选中的元素节点
+ */
 const print = (data) => {
   const canvas = document.getElementById('debugPic');
   const g = canvas.getContext('2d');
@@ -1264,6 +1489,8 @@ const print = (data) => {
     );
   }
 };
+// ======================== 设备控制指令（通过主控制通道下发） ========================
+/** 查找设备（点亮/唤醒屏幕） */
 const searchDevice = () => {
   websocket.send(
     JSON.stringify({
@@ -1271,6 +1498,7 @@ const searchDevice = () => {
     })
   );
 };
+/** 启动 HTTP 代理抓包 */
 const startProxy = () => {
   websocket.send(
     JSON.stringify({
@@ -1278,6 +1506,7 @@ const startProxy = () => {
     })
   );
 };
+/** 向设备安装代理证书 */
 const installCert = () => {
   websocket.send(
     JSON.stringify({
@@ -1285,6 +1514,7 @@ const installCert = () => {
     })
   );
 };
+/** 通过包名打开应用 */
 const openApp = (pkg) => {
   websocket.send(
     JSON.stringify({
@@ -1294,6 +1524,7 @@ const openApp = (pkg) => {
     })
   );
 };
+/** 通过包名强制停止应用 */
 const killApp = (pkg) => {
   websocket.send(
     JSON.stringify({
@@ -1306,6 +1537,7 @@ const killApp = (pkg) => {
     message: $t('androidRemoteTS.code.killMsg'),
   });
 };
+/** 刷新应用列表：清空后通过终端通道请求 appList（增量回传） */
 const refreshAppList = () => {
   appList.value = [];
   ElMessage.success({
@@ -1317,6 +1549,7 @@ const refreshAppList = () => {
     })
   );
 };
+/** 清除代理设置 */
 const clearProxy = () => {
   ElMessage.success({
     message: $t('androidRemoteTS.messageTwo'),
@@ -1327,6 +1560,7 @@ const clearProxy = () => {
     })
   );
 };
+/** 卸载应用 */
 const uninstallApp = (pkg) => {
   ElMessage.success({
     message: $t('androidRemoteTS.startUninstall'),
@@ -1338,6 +1572,7 @@ const uninstallApp = (pkg) => {
     })
   );
 };
+/** 获取指定 XPath 元素的截图（结果由 eleScreen 消息回传） */
 const getEleScreen = (xpath) => {
   elementScreenLoading.value = true;
   websocket.send(
@@ -1348,12 +1583,15 @@ const getEleScreen = (xpath) => {
     })
   );
 };
+/** 清空步骤日志 */
 const clearLog = () => {
   stepLog.value = [];
 };
+/** 追加一条步骤日志 */
 const setStepLog = (data) => {
   stepLog.value.push(data);
 };
+/** 远程运行关联的测试用例（切换到 log Tab 并下发 runStep） */
 const runStep = () => {
   debugLoading.value = true;
   activeTab2.value = 'log';
@@ -1366,6 +1604,7 @@ const runStep = () => {
     })
   );
 };
+/** 校验元素定位（下发 checkLocation，结果由 status 消息回传） */
 const checkLocation = (data) => {
   checkElementLoading.value = true;
   websocket.send(
@@ -1378,6 +1617,7 @@ const checkLocation = (data) => {
     })
   );
 };
+/** 停止正在运行的测试用例 */
 const stopStep = () => {
   debugLoading.value = false;
   websocket.send(
@@ -1390,6 +1630,7 @@ const stopStep = () => {
     })
   );
 };
+/** 发送按键事件（如 HOME、BACK、电源等） */
 const pressKey = (keyNum) => {
   websocket.send(
     JSON.stringify({
@@ -1398,6 +1639,7 @@ const pressKey = (keyNum) => {
     })
   );
 };
+/** 模拟断开电池（断电测试） */
 const batteryDisconnect = () => {
   websocket.send(
     JSON.stringify({
@@ -1406,6 +1648,7 @@ const batteryDisconnect = () => {
     })
   );
 };
+/** 恢复电池连接 */
 const batteryReset = () => {
   websocket.send(
     JSON.stringify({
@@ -1414,6 +1657,10 @@ const batteryReset = () => {
     })
   );
 };
+/**
+ * 切换屏幕画质（高/中/低/固定），通过屏幕通道下发 pic 指令
+ * @param {string} type - 画质名称（i18n key 或 'fixed'）
+ */
 const changePic = (type) => {
   loading.value = true;
   let pic;
@@ -1438,6 +1685,12 @@ const changePic = (type) => {
     })
   );
 };
+/**
+ * 切换屏幕投射模式（Scrcpy ↔ Minicap）
+ * 调用 Scrcpy 实例的 switchMode，更新 touchWrapper 目标 DOM，并持久化到 localStorage
+ * @param {string} type - 'Scrcpy' 或 'Minicap'
+ * @param {number} [isInit] - 1 表示初始化调用（不切换模式）
+ */
 const changeScreenMode = (type, isInit) => {
   if (isInit !== 1) {
     loading.value = true;
@@ -1454,9 +1707,11 @@ const changeScreenMode = (type, isInit) => {
   // 储存最后模式
   window.localStorage.setItem('screenMode', type);
 };
-const pullPath = ref('');
-const pullLoading = ref(false);
-const pullResult = ref('');
+// ======================== 文件推送 / 拉取 ========================
+const pullPath = ref('');           // 要拉取的设备端路径
+const pullLoading = ref(false);     // 拉取中
+const pullResult = ref('');         // 拉取结果 URL
+/** 从设备拉取文件到服务器（结果由 pullResult 消息回传） */
 const pullFile = () => {
   pullResult.value = '';
   pullLoading.value = true;
@@ -1467,10 +1722,11 @@ const pullFile = () => {
     })
   );
 };
-const fileLoading = ref(false);
-const upLoadFilePath = ref('');
-const pushPath = ref('');
-const pushLoading = ref(false);
+const fileLoading = ref(false);      // 文件上传中
+const upLoadFilePath = ref('');     // 已上传文件的服务器路径
+const pushPath = ref('');           // 要推送到的设备端路径
+const pushLoading = ref(false);     // 推送中
+/** 将已上传的文件推送到设备指定路径 */
 const pushFile = () => {
   pushLoading.value = true;
   websocket.send(
@@ -1481,6 +1737,7 @@ const pushFile = () => {
     })
   );
 };
+/** 上传文件到服务器（用于推送文件的准备步骤） */
 const uploadFile = (content) => {
   fileLoading.value = true;
   const formData = new FormData();
@@ -1497,6 +1754,7 @@ const uploadFile = (content) => {
       }
     });
 };
+/** 上传前校验：仅允许 jpg/png 图片 */
 const beforeAvatarUpload = (file) => {
   if (file.name.endsWith('.jpg') || file.name.endsWith('.png')) {
     return true;
@@ -1506,6 +1764,7 @@ const beforeAvatarUpload = (file) => {
   });
   return false;
 };
+/** 上传前校验：仅允许 apk 安装包 */
 const beforeAvatarUpload2 = (file) => {
   if (file.name.endsWith('.apk')) {
     return true;
@@ -1515,11 +1774,13 @@ const beforeAvatarUpload2 = (file) => {
   });
   return false;
 };
+/** 超出上传数量限制时的提示 */
 const limitOut = () => {
   ElMessage.error({
     message: $t('androidRemoteTS.addOne'),
   });
 };
+/** 上传 apk 安装包并自动安装 */
 const uploadPackage = (content) => {
   uploadLoading.value = true;
   const formData = new FormData();
@@ -1536,6 +1797,7 @@ const uploadPackage = (content) => {
       }
     });
 };
+/** 上传图片用于扫码识别 */
 const uploadScan = (content) => {
   const formData = new FormData();
   formData.append('file', content.file);
@@ -1553,6 +1815,7 @@ const uploadScan = (content) => {
       }
     });
 };
+/** 发送扫码指令（设备端识别图片中的二维码） */
 const scan = (url) => {
   websocket.send(
     JSON.stringify({
@@ -1561,6 +1824,7 @@ const scan = (url) => {
     })
   );
 };
+/** 发送清除文本指令（CODE_AC_CLEAN） */
 const sendText = () => {
   websocket.send(
     JSON.stringify({
@@ -1569,6 +1833,7 @@ const sendText = () => {
     })
   );
 };
+/** 启动虚拟键盘 */
 const startKeyboard = () => {
   websocket.send(
     JSON.stringify({
@@ -1576,6 +1841,7 @@ const startKeyboard = () => {
     })
   );
 };
+/** 停止虚拟键盘 */
 const stopKeyboard = () => {
   websocket.send(
     JSON.stringify({
@@ -1583,6 +1849,7 @@ const stopKeyboard = () => {
     })
   );
 };
+/** 安装 apk（通过 debug 通道下发 install 指令） */
 const install = (apk) => {
   if (apk.length > 0) {
     websocket.send(
@@ -1597,6 +1864,7 @@ const install = (apk) => {
     });
   }
 };
+/** 获取元素树：先截图设置调试大图，再下发 tree 指令（含多窗口/忽略/可见选项） */
 const getElement = () => {
   elementLoading.value = true;
   setImgData();
@@ -1610,6 +1878,7 @@ const getElement = () => {
     })
   );
 };
+/** 获取 Poco 游戏 UI 树（指定引擎和端口） */
 const getPoco = (engine, port) => {
   pocoLoading.value = true;
   websocket.send(
@@ -1621,6 +1890,7 @@ const getPoco = (engine, port) => {
     })
   );
 };
+/** 获取 WebView 调试端口转发列表 */
 const getWebViewForward = () => {
   webViewLoading.value = true;
   websocket.send(
@@ -1629,6 +1899,10 @@ const getWebViewForward = () => {
     })
   );
 };
+/**
+ * 关闭所有 WebSocket 连接并释放资源
+ * 依次关闭：主控制、屏幕（含 Scrcpy 实例）、终端、音频，最后关闭窗口
+ */
 const close = () => {
   if (websocket !== null) {
     websocket.close();
@@ -1649,11 +1923,18 @@ const close = () => {
   }
   window.close();
 };
+/** 组件卸载前：关闭所有连接 */
 onBeforeUnmount(() => {
   close();
 });
+/**
+ * 根据 id 获取设备信息，校验在线后获取 Agent 并建立 WebSocket 连接
+ * 执行流程：GET /controller/devices → 校验 ONLINE → GET /controller/agents → openSocket
+ * @param {number} id - 设备 id
+ */
 const getDeviceById = (id) => {
   loading.value = true;
+  console.log(`getDeviceById ${id}`);
   axios.get('/controller/devices', { params: { id } }).then((resp) => {
     if (resp.code === 2000) {
       device.value = resp.data;
@@ -1681,10 +1962,12 @@ const getDeviceById = (id) => {
   });
 };
 /**
- * 实时音频
+ * 实时音频模块
+ * 通过 AudioProcessor 建立独立的音频 WebSocket，将设备音频流解码播放
  */
-let audioPlayer = null;
-const isConnectAudio = ref(false);
+let audioPlayer = null;                 // AudioProcessor 实例
+const isConnectAudio = ref(false);      // 音频是否已连接
+/** 初始化音频播放器并绑定错误回调 */
 const initAudioPlayer = () => {
   audioPlayer = new AudioProcessor({
     node: 'audio-player',
@@ -1697,6 +1980,7 @@ const initAudioPlayer = () => {
     destroyAudio();
   });
 };
+/** 播放音频：若已存在实例则提示，否则初始化并开始播放 */
 const playAudio = () => {
   if (audioPlayer) {
     ElMessage.warning({
@@ -1710,6 +1994,7 @@ const playAudio = () => {
     message: $t('androidRemoteTS.audio'),
   });
 };
+/** 销毁音频播放器并提示断开 */
 const destroyAudio = () => {
   audioPlayer.onDestroy();
   audioPlayer = null;
@@ -1718,6 +2003,7 @@ const destroyAudio = () => {
     message: $t('androidRemoteTS.audioFail'),
   });
 };
+/** 重置音频播放器（重置 jmuxer 后重新播放） */
 const resetAudioPlayer = () => {
   audioPlayer.jmuxer.reset();
   audioPlayer.onPlay();
@@ -1725,14 +2011,26 @@ const resetAudioPlayer = () => {
     message: $t('androidRemoteTS.audioSuccess'),
   });
 };
+/** 获取项目列表并写入 Vuex */
 const getProjectList = () => {
   axios.get('/controller/projects/list').then((resp) => {
     store.commit('saveProjectList', resp.data);
   });
 };
-let activeTime = 0;
-const idleCount = ref(0);
+// ======================== 空闲检测 / 超时管理 ========================
+let activeTime = 0;                  // 最近一次活动时间戳
+const idleCount = ref(0);            // 空闲计数（每秒 +1，有操作时归零）
+/**
+ * 组件挂载：初始化入口
+ * 1. 获取项目信息（store 或接口）
+ * 2. 根据 deviceId 获取设备 → Agent → 建立 WebSocket
+ * 3. 折叠侧边栏
+ * 4. 读取远程/空闲超时配置
+ * 5. 绑定全局 mouse 事件更新活动时间
+ * 6. 启动 checkAlive 定时器
+ */
 onMounted(() => {
+  console.log('mounted');
   if (store.state.project.id) {
     project.value = store.state.project;
   } else {
@@ -1753,8 +2051,11 @@ onMounted(() => {
   };
   checkAlive();
 });
+// 远程连接最大时长（秒），到时自动断开
 const remoteTimeout = ref(0);
+// 计时器：每秒 +1，用于驱动顶部倒计时显示
 const ticker = ref(0);
+/** 获取远程超时配置并启动每秒计时器 */
 const getRemoteTimeout = () => {
   axios.get('/controller/confList/getRemoteTimeout').then((resp) => {
     remoteTimeout.value = resp.data;
@@ -1763,13 +2064,16 @@ const getRemoteTimeout = () => {
     }, 1000);
   });
 };
+// 空闲超时（分钟），无操作超过此时长则自动断开
 const idleTimeout = ref(0);
+/** 获取空闲超时配置 */
 const getIdleTimeout = () => {
   axios.get('/controller/confList/getIdleTimeout').then((resp) => {
     idleTimeout.value = resp.data;
   });
 };
 
+/** 空闲检测定时器：每秒累加空闲计数，超过阈值则调用 close() 断开 */
 const checkAlive = () => {
   setInterval(() => {
     idleCount.value++;
@@ -1782,6 +2086,24 @@ const checkAlive = () => {
 </script>
 
 <template>
+  <!--
+    模板整体结构：
+    1. 元素截图保存对话框（dialogImgElement）
+    2. 添加元素对话框（dialogElement）
+    3. 远程页面头部（RemotePageHeader：超时倒计时、关闭按钮）
+    4. 左侧：设备屏幕投射区（el-card）
+         - 设备信息、屏幕画面（Scrcpy video / Minicap canvas）
+         - 工具栏：电源/音量/主页/返回等按键、画质切换、截图、触控修复
+    5. 右侧：功能 Tab 面板（el-tabs）
+         - main    远程 ADB / 文件推送拉取
+         - apps    应用管理（推送安装 / URL 安装 / 关联安装）
+         - proxy   代理抓包（WiFi 列表 / 证书安装 / iframe 调试）
+         - terminal 终端（Shell 命令 / Logcat 日志）
+         - debug   测试用例调试（步骤列表 / 步骤日志）
+         - ele     元素检查（原生控件树 / Poco 树）
+         - webview WebView 调试（列表 / iframe）
+         - perfmon 性能监控
+  -->
   <el-dialog
     v-model="dialogImgElement"
     :title="$t('androidRemoteTS.code.elementsSnapshot')"
@@ -1847,12 +2169,14 @@ const checkAlive = () => {
     @close="close"
   />
   <div style="padding: 20px">
+    <!-- 主布局行：支持左右分栏拖拽（lineMouse* 事件由父级传入） -->
     <el-row
       :gutter="24"
       @mouseup="lineMouseup"
       @mouseleave="lineMouseleave"
       @mousemove="lineMousemove"
     >
+      <!-- ============ 左侧：设备屏幕投射区 ============ -->
       <el-col
         :span="tabPosition == 'left' ? 12 : 24"
         :style="{
@@ -1948,6 +2272,7 @@ const checkAlive = () => {
           </template>
           <div style="margin-right: 40px; text-align: center">
             <div>
+              <!-- 远程文本输入框：浮动定位在触摸点，input/delete/enter 事件转发到设备 -->
               <input
                 ref="inputBox"
                 v-model="inputValue"
@@ -1958,6 +2283,7 @@ const checkAlive = () => {
                 @keyup.delete="deleteInputHandle"
                 @keyup.enter="enterInputHandle"
               />
+              <!-- Scrcpy 模式：H.264 视频流渲染（由 Scrcpy 实例解码） -->
               <video
                 v-show="screenMode == 'Scrcpy'"
                 id="scrcpy-video"
@@ -1970,6 +2296,7 @@ const checkAlive = () => {
                 @mousedown="mousedown"
                 @mouseleave="mouseleave"
               />
+              <!-- Minicap 模式：JPEG 帧逐帧绘制到 canvas -->
               <canvas
                 v-show="screenMode != 'Scrcpy'"
                 id="canvas"
@@ -1982,6 +2309,7 @@ const checkAlive = () => {
               />
               <audio id="audio-player" hidden></audio>
             </div>
+            <!-- 按键工具栏：菜单(82) / 最近任务(187) / Home(3) / 返回(4) 等系统按键 -->
             <el-button-group id="pressKey">
               <el-button
                 size="small"
@@ -2517,6 +2845,7 @@ const checkAlive = () => {
               : '',
         }"
       >
+        <!-- ============ 右侧：功能 Tab 面板 ============ -->
         <el-tabs
           v-model="activeTab"
           stretch
@@ -2524,6 +2853,7 @@ const checkAlive = () => {
           :tab-position="tabPosition"
           @tab-click="switchTabs"
         >
+          <!-- ====== 主控面板 Tab：远程 ADB / 文件推送拉取 ====== -->
           <el-tab-pane
             :label="$t('androidRemoteTS.code.remoteControlPanel')"
             name="main"
@@ -2768,6 +3098,7 @@ const checkAlive = () => {
               </el-col>
             </el-row>
           </el-tab-pane>
+          <!-- ====== 应用管理 Tab：推送安装 / URL 安装 / 关联安装 ====== -->
           <el-tab-pane :label="$t('androidRemoteTS.code.app')" name="apps">
             <el-tabs v-model="activeIntallTab" type="border-card" stretch>
               <el-tab-pane name="pushInstallPane">
@@ -2978,6 +3309,7 @@ const checkAlive = () => {
               ></Pageable>
             </el-card>
           </el-tab-pane>
+          <!-- ====== 代理抓包 Tab：WiFi 列表 / 证书安装 / iframe 调试 ====== -->
           <el-tab-pane :label="$t('androidRemoteTS.code.packet')" name="proxy">
             <el-button size="small" type="success" @click="startProxy"
               >{{ $t('androidRemoteTS.code.startPacket') }}
@@ -3110,6 +3442,7 @@ const checkAlive = () => {
               </el-col>
             </el-row>
           </el-tab-pane>
+          <!-- ====== 终端 Tab：Shell 命令执行 + Logcat 日志采集 ====== -->
           <el-tab-pane label="Terminal" name="terminal">
             <el-alert
               :title="$t('androidRemoteTS.code.precautions')"
@@ -3246,6 +3579,7 @@ const checkAlive = () => {
               </el-tab-pane>
             </el-tabs>
           </el-tab-pane>
+          <!-- ====== UI 自动化调试 Tab：关联用例 / 步骤列表 / 步骤日志 ====== -->
           <el-tab-pane
             :label="$t('androidRemoteTS.code.UIAutomation.UIAutomationName')"
             name="auto"
@@ -3442,6 +3776,7 @@ const checkAlive = () => {
               </el-card>
             </div>
           </el-tab-pane>
+          <!-- ====== 元素检查 Tab：原生控件树 + Poco 游戏控件树 ====== -->
           <el-tab-pane :label="$t('routes.controlElement')" name="ele">
             <el-tabs stretch type="border-card">
               <el-tab-pane :label="$t('androidRemoteTS.code.nativeControls')">
@@ -4147,6 +4482,7 @@ const checkAlive = () => {
               </el-tab-pane>
             </el-tabs>
           </el-tab-pane>
+          <!-- ====== WebView 调试 Tab：WebView 列表 / Chrome DevTools iframe ====== -->
           <el-tab-pane
             :label="$t('androidRemoteTS.code.webView.webDebug')"
             name="webview"
@@ -4287,6 +4623,7 @@ const checkAlive = () => {
               </iframe>
             </div>
           </el-tab-pane>
+          <!-- ====== 性能监控 Tab：CPU / 内存 / FPS 等指标采集 ====== -->
           <el-tab-pane :label="$t('IOSRemote.perfmon')" name="perfmon">
             <android-perf
               ref="androidPerfRef"
@@ -4302,6 +4639,7 @@ const checkAlive = () => {
 </template>
 
 <style scoped lang="less">
+/* 左右分栏拖拽条（垂直方向，鼠标可左右拖动调整左右面板宽度） */
 .line {
   width: 2px;
   height: inherit;
@@ -4327,6 +4665,7 @@ const checkAlive = () => {
   }
 }
 
+/* 上下分栏拖拽条（水平方向，鼠标可上下拖动调整上下面板高度） */
 .lineVertical {
   width: 100%;
   height: 2px;
@@ -4349,16 +4688,19 @@ const checkAlive = () => {
   }
 }
 
+/* 元素调试画布：宽度撑满，高度自适应（用于绘制元素高亮框） */
 #debugPic {
   width: 100%;
   height: auto;
 }
 
+/* URL 安装输入框容器 */
 .url-install-box {
   position: relative;
   height: 100%;
 }
 
+/* 远程文本输入框：绝对定位、透明、隐藏在触摸点（用于接收键盘输入并转发到设备） */
 .input-box {
   position: absolute;
   border: none;

@@ -4,6 +4,8 @@ import { ElMessage } from 'element-plus';
 import { useStore } from 'vuex';
 import { useI18n } from 'vue-i18n';
 import defaultLogo from '../assets/logo.png';
+// 引入平台类型常量
+import { PLATFORM_TYPE } from '@/config/constants';
 
 import axios from '../http/axios';
 
@@ -46,7 +48,7 @@ const getImg = (name) => {
 const platformList = [
   { name: 'Android', value: 1, img: 'ANDROID' },
   { name: 'iOS', value: 2, img: 'IOS' },
-  { name: 'HarmonyOS', value: 3, img: 'HMOS' },
+  { name: 'HarmonyOS', value: PLATFORM_TYPE.HARMONYOS, img: 'HMOS' },
 ];
 const emit = defineEmits(['flush']);
 const caseForm = ref(null);

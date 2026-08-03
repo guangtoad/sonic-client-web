@@ -12,6 +12,9 @@ import { localeSetting } from '@/config/locale';
 // 引入缓存键名配置
 import { LOCALE_KEY } from '@/config/cache';
 
+// 引入平台类型常量
+import { PLATFORM_TYPE } from '@/config/constants';
+
 // 引入本地存储工具函数
 import { setLocal, getLocal } from '@/utils/cache/localStorage';
 

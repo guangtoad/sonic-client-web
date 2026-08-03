@@ -40,7 +40,7 @@ import { router } from '../router/index.js';
 let baseURL = '';
 if (process.env.NODE_ENV === 'development') {
   // 开发环境：指向本地后端服务
-  baseURL = 'http://192.168.1.119:3000/server/api';
+  baseURL = 'http://127.0.0.1:3000/server/api';
 }
 if (process.env.NODE_ENV === 'production') {
   // 生产环境：使用相对路径

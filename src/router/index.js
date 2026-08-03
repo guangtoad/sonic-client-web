@@ -35,6 +35,13 @@ const getRoutes = () => [
     component: () => import('../views/RemoteEmulator/index.vue'),
     meta: { title: $tc('routes.remoteControl') },
   },
+  // 鸿蒙 远程控制路由（独立页面）
+  {
+    path: '/HarmonyOSRemote/:deviceId(\\d+)',
+    // 参数校验：deviceId 必须为数字
+    component: () => import('../views/RemoteEmulator/index.vue'),
+    meta: { title: $tc('routes.remoteControl') },
+  },
   // iOS 远程控制路由（独立页面）
   {
     path: '/IOSRemote/:deviceId(\\d+)',
@@ -57,6 +64,13 @@ const getRoutes = () => [
       // Android 远程控制子路由
       {
         path: 'AndroidRemote/:deviceId(\\d+)',
+        component: () => import('../views/RemoteEmulator/index.vue'),
+        meta: { title: $tc('routes.remoteControl') },
+      },
+      // 鸿蒙 远程控制路由（独立页面）
+      {
+        path: '/HarmonyOSRemote/:deviceId(\\d+)',
+        // 参数校验：deviceId 必须为数字
         component: () => import('../views/RemoteEmulator/index.vue'),
         meta: { title: $tc('routes.remoteControl') },
       },
@@ -83,6 +97,13 @@ const getRoutes = () => [
       },
       {
         path: 'AndroidRemote/:deviceId(\\d+)',
+        component: () => import('../views/RemoteEmulator/index.vue'),
+        meta: { title: $tc('routes.remoteControl') },
+      },
+      // 鸿蒙 远程控制路由（独立页面）
+      {
+        path: '/HarmonyOSRemote/:deviceId(\\d+)',
+        // 参数校验：deviceId 必须为数字
         component: () => import('../views/RemoteEmulator/index.vue'),
         meta: { title: $tc('routes.remoteControl') },
       },

@@ -25,6 +25,8 @@ import TestSuiteUpdate from '../components/TestSuiteUpdate.vue';
 // 引入分页组件
 import Pageable from '../components/Pageable.vue';
 
+import { PLATFORM_TYPE } from '../config/constants';
+
 // 获取国际化翻译函数
 const { t: $t } = useI18n();
 

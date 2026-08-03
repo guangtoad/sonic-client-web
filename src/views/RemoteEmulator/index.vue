@@ -16,10 +16,15 @@
  *   You should have received a copy of the GNU Affero General Public License
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useI18n } from 'vue-i18n';
 import AndroidRemote from './AndroidRemote.vue';
+import HarmonyOSRemote from './HarmonyOSRemote.vue';
+
+const route = useRoute();
+const isHarmonyOS = computed(() => route.path.startsWith('/HarmonyOSRemote'));
 
 const { t: $t } = useI18n();
 
@@ -184,6 +189,18 @@ const saveLastSplitObj = () => {
       />
     </el-tooltip>
     <AndroidRemote
+      v-if="!isHarmonyOS"
+      :tab-position="tabPosition"
+      :canvas-rect-info="canvasRectInfo"
+      :layout-split-info="layoutSplitInfo"
+      :line-mouseup="lineMouseup"
+      :line-mousemove="lineMousemove"
+      :line-mousedown="lineMousedown"
+      :line-mouseleave="lineMouseleave"
+      :is-split-pressing="isPress"
+    />
+    <HarmonyOSRemote
+      v-else
       :tab-position="tabPosition"
       :canvas-rect-info="canvasRectInfo"
       :layout-split-info="layoutSplitInfo"

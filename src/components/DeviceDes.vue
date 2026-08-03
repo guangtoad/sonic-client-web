@@ -156,7 +156,14 @@ const jump = (id, platform) => {
     routeData = router.resolve({
       path: `/AndroidRemote/${id}`,
     });
-  } else {
+  }
+  else if (platform === 6) {
+    // Android 设备
+    routeData = router.resolve({
+      path: `/HarmonyOSRemote/${id}`,
+    });
+  }  
+  else {
     // iOS 设备
     routeData = router.resolve({
       path: `/IOSRemote/${id}`,

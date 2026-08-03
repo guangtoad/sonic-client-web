@@ -24,6 +24,9 @@
 // 引入语言配置常量
 import { LOCALE } from '@/config/locale';
 
+// 引入平台类型常量
+import { PLATFORM_TYPE } from '@/config/constants';
+
 /**
  * 设置 HTML 页面的 lang 属性
  * @param {string} locale - 语言代码（如 'zh_CN'）
