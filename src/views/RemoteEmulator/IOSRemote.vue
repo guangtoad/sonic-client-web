@@ -156,7 +156,11 @@ const computedCenter = (x, y, width, height) => {
   const reY = parseInt(parseInt(y) + parseInt(height) / 2);
   return `${reX},${reY}`;
 };
-const img = import.meta.globEager('../../assets/img/*');
+const img = Object.fromEntries(
+  Object.entries(import.meta.glob('../../assets/img/*', { eager: true })).map(
+    ([k, v]) => [k.startsWith('./') ? k : './' + k, v]
+  )
+);
 let websocket = null;
 let terminalWebsocket = null;
 let screenWebsocket = null;

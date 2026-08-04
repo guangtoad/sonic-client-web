@@ -20,8 +20,12 @@ watch(
 const emit = defineEmits(['save', 'abort']);
 const { t: $t } = useI18n();
 
+const img = Object.fromEntries(
+  Object.entries(import.meta.glob('./../assets/img/*', { eager: true })).map(
+    ([k, v]) => [k.startsWith('./') ? k : './' + k, v]
+  )
+);
 const getImg = (name) => {
-  const img = import.meta.globEager('./../assets/img/*');
   let result;
   try {
     result = img[`./../assets/img/${name}.jpg`].default;

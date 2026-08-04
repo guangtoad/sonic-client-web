@@ -29,7 +29,11 @@ const { t: $t } = useI18n();
 const props = defineProps({
   agentId: Number,
 });
-const img = import.meta.globEager('./../assets/img/*');
+const img = Object.fromEntries(
+  Object.entries(import.meta.glob('./../assets/img/*', { eager: true })).map(
+    ([k, v]) => [k.startsWith('./') ? k : './' + k, v]
+  )
+);
 const devices = ref([]);
 const line = ref([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 const listByAgentId = () => {

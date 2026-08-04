@@ -20,7 +20,11 @@ const props = defineProps({
   projectId: Number,
   publicStepId: Number,
 });
-const img = import.meta.globEager('./../assets/img/*');
+const img = Object.fromEntries(
+  Object.entries(import.meta.glob('./../assets/img/*', { eager: true })).map(
+    ([k, v]) => [k.startsWith('./') ? k : './' + k, v]
+  )
+);
 const publicStep = ref({
   id: null,
   projectId: props.projectId,

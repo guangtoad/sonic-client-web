@@ -20,7 +20,11 @@ import {
   VideoCamera,
 } from '@element-plus/icons';
 
-const img = import.meta.globEager('../assets/img/*');
+const img = Object.fromEntries(
+  Object.entries(import.meta.glob('../assets/img/*', { eager: true })).map(
+    ([k, v]) => [k.startsWith('./') ? k : './' + k, v]
+  )
+);
 const { t: $t } = useI18n();
 const selectPocoType = ref('');
 const pocoPort = ref('');

@@ -11,7 +11,11 @@ import axios from '../http/axios';
 
 const { t: $t } = useI18n();
 
-const img = import.meta.globEager('./../assets/img/*');
+const img = Object.fromEntries(
+  Object.entries(import.meta.glob('./../assets/img/*', { eager: true })).map(
+    ([k, v]) => [k.startsWith('./') ? k : './' + k, v]
+  )
+);
 const props = defineProps({
   projectId: Number,
   platform: Number,

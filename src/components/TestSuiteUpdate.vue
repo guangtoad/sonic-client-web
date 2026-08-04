@@ -32,7 +32,11 @@ const route = useRoute();
 const props = defineProps({
   suiteId: Number,
 });
-const img = import.meta.globEager('./../assets/img/*');
+const img = Object.fromEntries(
+  Object.entries(import.meta.glob('./../assets/img/*', { eager: true })).map(
+    ([k, v]) => [k.startsWith('./') ? k : './' + k, v]
+  )
+);
 const getImg = (name) => {
   let result;
   if (name === 'meizu') {

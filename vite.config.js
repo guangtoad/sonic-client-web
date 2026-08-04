@@ -29,13 +29,7 @@ export default defineConfig({
   // 开发服务器配置
   server: {
     port: 3002,
-    // 开发模式下启用 sourcemap，支持 Chrome DevTools 定位到 Vue 源代码
-    sourcemap: true,
-  },
-  // 依赖优化配置
-  optimizeDeps: {
-    // 优化依赖时保留 sourcemap
-    sourcemap: true,
+    hmr: true, // 热更新开启
   },
   // 构建配置
   build: {

@@ -1055,7 +1055,7 @@ const harmonyOSRemoteTS = {
     installFile: '下载文件',
     app: '应用程序',
     pushInstall: '上传安装',
-    apkFile: '将APK文件拖到此处，或',
+    apkFile: '将hap文件拖到此处，或',
     onlyAPKFile: '只能上传apk文件',
     URLInstall: 'URL安装',
     linkInstall: '持续集成管理安装',

@@ -23,7 +23,11 @@ import StepList from '../components/StepList.vue';
 const { t: $t } = useI18n();
 
 // 加载所有图片资源
-const img = import.meta.globEager('./../assets/img/*');
+const img = Object.fromEntries(
+  Object.entries(import.meta.glob('./../assets/img/*', { eager: true })).map(
+    ([k, v]) => [k.startsWith('./') ? k : './' + k, v]
+  )
+);
 
 // 获取当前路由信息
 const route = useRoute();

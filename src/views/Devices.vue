@@ -68,7 +68,11 @@ const { t: $t } = useI18n();
 const { toClipboard } = useClipboard();
 
 // 加载所有图片资源
-const img = import.meta.globEager('./../assets/img/*');
+const img = Object.fromEntries(
+  Object.entries(import.meta.glob('./../assets/img/*', { eager: true })).map(
+    ([k, v]) => [k.startsWith('./') ? k : './' + k, v]
+  )
+);
 
 // 获取路由实例
 const router = useRouter();

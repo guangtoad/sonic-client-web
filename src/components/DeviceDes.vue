@@ -33,7 +33,11 @@ const router = useRouter();
 const { t: $t } = useI18n();
 
 // 加载所有图片资源（使用 globEager 同步加载）
-const img = import.meta.globEager('./../assets/img/*');
+const img = Object.fromEntries(
+  Object.entries(import.meta.glob('./../assets/img/*', { eager: true })).map(
+    ([k, v]) => [k.startsWith('./') ? k : './' + k, v]
+  )
+);
 /**
  * 定义组件属性
  */

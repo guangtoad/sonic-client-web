@@ -64,7 +64,11 @@ const projectUpdateForm = ref(null);
 const dialogDel = ref(false);
 
 // 加载所有图片资源
-const img = import.meta.globEager('./../assets/img/*');
+const img = Object.fromEntries(
+  Object.entries(import.meta.glob('./../assets/img/*', { eager: true })).map(
+    ([k, v]) => [k.startsWith('./') ? k : './' + k, v]
+  )
+);
 
 // 告警机器人列表数据
 const robotData = ref([]);
