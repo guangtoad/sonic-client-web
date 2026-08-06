@@ -71,6 +71,11 @@ const emit = defineEmits([
   'update:tabSize',
 ]);
 
+const codeModel = computed({
+  get: () => props.code,
+  set: (val) => emit('update:code', val),
+});
+
 const themes = { oneDark };
 const languages = {
   Groovy: java(),
@@ -307,7 +312,7 @@ onMounted(() => {
   </div>
   <Codemirror
     ref="cm"
-    v-model="code"
+    v-model="codeModel"
     class="codemirror"
     :autofocus="config.autofocus"
     :placeholder="config.placeholder"

@@ -120,9 +120,9 @@ const getPoco = (engine) => {
 const getImg = (name) => {
   let result;
   try {
-    result = img[`../assets/img/${name}.jpg`].default;
+    result = img[`../assets/img/${name}.jpg`];
   } catch {
-    result = img['../assets/img/unName.jpg'].default;
+    result = img['../assets/img/unName.jpg'];
   }
   return result;
 };

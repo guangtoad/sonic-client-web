@@ -650,7 +650,7 @@ const openSocket = (host, port, key, udId) => {
         'SonicToken'
       )}`
     );
-    console.log(`WebSocket connect .. ${host}:${port}`);
+    console.log(`Android WebSocket connect .. ${host}:${port}`);
     //
     __Scrcpy = new Scrcpy({
       socketURL: `ws://${host}:${port}/websockets/android/screen/${key}/${udId}/${localStorage.getItem(
@@ -843,6 +843,7 @@ const screenWebsocketOnmessage = (message) => {
     const u = URL.createObjectURL(blob);
     img.src = u;
   } else {
+    console.log('screenWebsocketOnmessage', message.data);
     switch (JSON.parse(message.data).msg) {
       case 'rotation': {
         if (directionStatus.value !== -1) {

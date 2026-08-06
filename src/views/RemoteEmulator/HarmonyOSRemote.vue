@@ -1,5 +1,14 @@
 <script setup>
 /*
+ *   HarmonyOSRemote.vue - 鸿蒙设备远程控制主组件
+ *   功能：通过 WebSocket 实现远程屏幕投射、触摸控制、调试、文件传输、性能监控等
+ *   通道架构：
+ *     - websocket       : 主控通道（设备控制指令）
+ *     - screenWebsocket : 屏幕画面通道（JPEG/Scrcpy 视频流）
+ *     - terminalWebsocket : 终端通道（Logcat/Shell 命令）
+ *     - audioWebsocket  : 音频通道（实时声音采集）
+ */
+/*
  *   sonic-client-web  Front end of Sonic cloud real machine platform.
  *   Copyright (C) 2022 SonicCloudOrg
  *
@@ -182,6 +191,8 @@ const element = ref({
   projectId: 0,
 });
 const computedCenter = (b1, b2) => {
+  // 计算两个坐标字符串(x,y格式)的中心点坐标
+  // 用于元素边界框取中心点
   const x1 = b1.substring(0, b1.indexOf(','));
   const y1 = b1.substring(b1.indexOf(',') + 1);
   const x2 = b2.substring(0, b2.indexOf(','));
@@ -190,6 +201,18 @@ const computedCenter = (b1, b2) => {
   const y = parseInt((parseInt(y1) + parseInt(y2)) / 2);
   return `${x},${y}`;
 };
+
+// 简易日志包装
+const clog = (msg) => {
+  console.log(`${msg}`);
+};
+/**
+ * Tab切换懒加载：
+ * - proxy: 触发 WiFi 列表加载
+ * - apps/perfmon: 触发应用列表加载
+ * - terminal: 调整终端面板高度
+ * - webview: 触发 WebView 转发列表加载
+ */
 const switchTabs = (e) => {
   if (e.props.name === 'proxy') {
     getWifiList();
@@ -208,6 +231,7 @@ const switchTabs = (e) => {
     }
   }
 };
+// 性能监控：发送 startPerfmon 指令开始采集指定包名的性能数据
 const startPerfmon = (bundleId) => {
   websocket.send(
     JSON.stringify({
@@ -216,6 +240,7 @@ const startPerfmon = (bundleId) => {
     })
   );
 };
+// 性能监控：停止性能采集
 const stopPerfmon = () => {
   websocket.send(
     JSON.stringify({
@@ -227,6 +252,7 @@ const img = import.meta.glob('../../assets/img/*', { eager: true });
 let websocket = null;
 let screenWebsocket = null;
 let __Scrcpy = null; // 实例
+const isClosing = ref(false);
 let terminalWebsocket = null;
 
 defineProps({
@@ -303,12 +329,14 @@ const filterTableData = computed(() => {
   transformPageable(list);
   return list;
 });
+// 切换触控修复模式：在 Minicap 和 Scrcpy 模式间切换
 const fixTouch = () => {
   ElMessage.success({
     message: $t('harmonyOSRemoteTS.repairedSuccess'),
   });
   isFixTouch = !isFixTouch;
 };
+// 修复屏幕旋转方向：在 0°/180° 和 90° 之间切换
 const fixOri = () => {
   ElMessage.success({
     message: $t('harmonyOSRemoteTS.repairedSuccess'),
@@ -331,6 +359,11 @@ const selectCase = (val) => {
 const removeCase = () => {
   testCase.value = {};
 };
+/**
+ * 根据品牌名称获取对应的 logo 图片
+ * 支持 meizu/LENOVO 等大小写差异兼容
+ * 找不到则返回默认 unName.jpg
+ */
 const getImg = (name) => {
   let result;
   if (name === 'meizu') {
@@ -498,16 +531,27 @@ const setImgData = () => {
   };
   isShowImg.value = true;
 };
+/**
+ * 建立所有 WebSocket 连接（主控、画面、终端）
+ * - websocket: 主控制通道，发送设备控制指令
+ * - __Scrcpy: 屏幕画面通道，Scrcpy 视频流
+ * - terminalWebsocket: 终端通道，Logcat/Shell 命令
+ * 三个通道均使用 harmonyOS 路径前缀
+ */
 const openSocket = (host, port, key, udId) => {
   if ('WebSocket' in window) {
-    //
+    
+    let webSocketURL = `ws://${host}:${port}/websockets/harmonyOS/${key}/${udId}/${localStorage.getItem(
+        'SonicToken'
+      )}`;
+      console.log(`HarmonyOS WebSocket connect .. ${webSocketURL}`);
     websocket = new WebSocket(
       `ws://${host}:${port}/websockets/harmonyOS/${key}/${udId}/${localStorage.getItem(
         'SonicToken'
       )}`
     );
-    console.log(`WebSocket connect .. ${host}:${port}`);
-    //
+   
+    console.log(`ws://${host}:${port}/websockets/harmonyOS/screen/${key}/${udId}/`);
     __Scrcpy = new Scrcpy({
       socketURL: `ws://${host}:${port}/websockets/harmonyOS/screen/${key}/${udId}/${localStorage.getItem(
         'SonicToken'
@@ -518,7 +562,7 @@ const openSocket = (host, port, key, udId) => {
     });
     screenWebsocket = __Scrcpy.websocket;
     changeScreenMode(screenMode.value, 1);
-    //
+    console.log(`ws://${host}:${port}/websockets/harmonyOS/terminal/${key}/${udId}/`);
     terminalWebsocket = new WebSocket(
       `ws://${host}:${port}/websockets/harmonyOS/terminal/${key}/${udId}/${localStorage.getItem(
         'SonicToken'
@@ -528,11 +572,16 @@ const openSocket = (host, port, key, udId) => {
     console.error($t('harmonyOSRemoteTS.noWebSocket'));
   }
   websocket.onmessage = websocketOnmessage;
-  websocket.onclose = (e) => {};
+  websocket.onclose = (e) => {
+    handleClose('main websocket closed');
+  };
   terminalWebsocket.onmessage = terminalWebsocketOnmessage;
-  terminalWebsocket.onclose = (e) => {};
+  terminalWebsocket.onclose = (e) => {
+    handleClose('terminal websocket closed');
+  };
   driverLoading.value = true;
 };
+// 发送 Logcat 采集指令（指定日志级别和过滤关键字）
 const sendLogcat = () => {
   terminalWebsocket.send(
     JSON.stringify({
@@ -590,6 +639,7 @@ const sendCmd = () => {
         )
       )
     );
+    
     terminalWebsocket.send(
       JSON.stringify({
         type: 'command',
@@ -610,6 +660,11 @@ const stopCmd = () => {
     })
   );
 };
+/**
+ * 终端通道消息分发器
+ * 处理 wifiListDetail / appListDetail / logcat / terminal / terResp / terDone / error 消息
+ * 日志着色：用正则替换不同级别日志的颜色（I蓝/D蓝/W黄/E红/F红）
+ */
 const terminalWebsocketOnmessage = (message) => {
   switch (JSON.parse(message.data).msg) {
     case 'wifiListDetail': {
@@ -656,10 +711,16 @@ const terminalWebsocketOnmessage = (message) => {
       ElMessage.error({
         message: $t('harmonyOSRemoteTS.systemException'),
       });
-      close();
+      handleClose('websocketOnmessage error');
       break;
   }
 };
+/**
+ * 屏幕通道消息分发器
+ * - Blob 类型：JPEG 视频帧，绘制到 canvas（Minicap 模式）
+ * - 消息类型：rotation（旋转变化）/ support（不支持提示）/ size（分辨率信息）/ picFinish（画质切换完成）/ error
+ * 收到 size 消息时更新 imgWidth/imgHeight 并通知 PocoPane
+ */
 const screenWebsocketOnmessage = (message) => {
   // console.log('screenWebsocketOnmessage', message.data);
   if (typeof message.data === 'object') {
@@ -680,6 +741,7 @@ const screenWebsocketOnmessage = (message) => {
     const u = URL.createObjectURL(blob);
     img.src = u;
   } else {
+    console.log('screenWebsocketOnmessage', message.data);
     switch (JSON.parse(message.data).msg) {
       case 'rotation': {
         if (directionStatus.value !== -1) {
@@ -721,11 +783,15 @@ const screenWebsocketOnmessage = (message) => {
         ElMessage.error({
           message: $t('harmonyOSRemoteTS.systemException'),
         });
-        close();
+        handleClose('screenWebsocketOnmessage error');
         break;
     }
   }
 };
+/**
+ * 主控通道消息分发器
+ * 处理 perfDetail / poco / proxyResult / pullResult / pushResult / paste / sas / tree / treeFail / installFinish / uninstallFinish / openDriver / step / status / forwardView / eleScreen / error 消息
+ */
 const websocketOnmessage = (message) => {
   console.log('websocketOnmessage', message.data);
   switch (JSON.parse(message.data).msg) {
@@ -895,9 +961,8 @@ const websocketOnmessage = (message) => {
       ElMessage.error({
         message: $t('harmonyOSRemoteTS.systemException'),
       });
-      close();
+      handleClose('messageHandler error');
       router.go(-1);
-      break;
     }
   }
 };
@@ -950,6 +1015,7 @@ const enterInputHandle = () => {
     })
   );
 };
+// 启动 Appium 驱动（Poco 元素调试所需）
 const openDriver = () => {
   driverLoading.value = true;
   websocket.send(
@@ -959,6 +1025,7 @@ const openDriver = () => {
     })
   );
 };
+// 关闭 Appium 驱动
 const closeDriver = () => {
   isDriverFinish.value = false;
   websocket.send(
@@ -971,89 +1038,70 @@ const closeDriver = () => {
     message: $t('harmonyOSRemoteTS.code.closeDriverMessage'),
   });
 };
-const getCurLocation = () => {
+// 根据设备实际屏幕尺寸(device.size，如"1080x1920")，将基于画面(imgWidth/imgHeight)的坐标按比例缩放为实际点击坐标
+const scaleToDevice = (x, y) => {
+  const sizeArr = (device.value.size || '').split('x');
+  if (sizeArr.length === 2 && imgWidth > 0 && imgHeight > 0) {
+    const deviceWidth = parseInt(sizeArr[0]);
+    const deviceHeight = parseInt(sizeArr[1]);
+    if (deviceWidth > 0 && deviceHeight > 0) {
+      if (directionStatus.value == 90 || directionStatus.value == 270) {
+        // 旋转状态：x对应物理Y(缩放因子=deviceHeight/imgWidth), y对应物理X(缩放因子=deviceWidth/imgHeight)
+        x = parseInt((x * deviceHeight) / imgWidth);
+        y = parseInt((y * deviceWidth) / imgHeight);
+      } else {
+        // 非旋转/180度状态：x对应物理X, y对应物理Y
+        x = parseInt((x * deviceWidth) / imgWidth);
+        y = parseInt((y * deviceHeight) / imgHeight);
+      }
+    }
+  }
+  return { x, y };
+};
+
+/**
+ * 鸿蒙设备专用坐标转换（HDC模式）
+ * 将鼠标在画面上的相对坐标转换为设备实际点击坐标
+ * 直接使用 canvas getBoundingClientRect 计算，不考虑旋转
+ * 通过 scaleToDevice 缩放到设备物理分辨率
+ */
+const getCurLocationForHDC = () => {
+  console.log(`getCurLocationForHDC ********* start ********`);
   let x;
   let y;
   let _x;
   let _y;
   const canvas = touchWrapper;
   const rect = canvas.getBoundingClientRect();
-  if (directionStatus.value != 0 && directionStatus.value != 180) {
-    // 左右旋转
-    _x = parseInt(
-      (event.clientY - rect.top) * (imgWidth / canvas.clientHeight)
+  _y = parseInt(
+      (event.clientY - rect.top)  / rect.height * imgHeight
     );
-    //
-    _y = parseInt(
-      (event.clientX - rect.left) * (imgHeight / canvas.clientWidth)
+  _x = parseInt(
+      (event.clientX - rect.left)  / rect.width * imgWidth
     );
-    x = directionStatus.value == 90 ? imgWidth - _x : _x - imgWidth * 3;
-    y = directionStatus.value == 90 ? _y : -_y;
-  } else {
-    _x = parseInt(
-      (event.clientX - rect.left) * (imgWidth / canvas.clientWidth)
-    );
-    x = directionStatus.value == 180 ? imgWidth - _x : _x;
-    //
-    _y = parseInt(
-      (event.clientY - rect.top) * (imgHeight / canvas.clientHeight)
-    );
-    y = directionStatus.value == 180 ? imgHeight - _y : _y;
-  }
-  inputBoxStyle.value = {
-    left: `${event.clientX - rect.left}px`,
-    top: `${event.clientY - rect.top}px`,
-  };
-  return {
-    x,
-    y,
-  };
+  x = _x;
+  y = _y;
+  console.log(`getCurLocationForHDC x: ${x}, y: ${y}`);
+  console.log(`getCurLocationForHDC ********* end ********`);
+  return scaleToDevice(x, y);
 };
-const getCurLocationForAdb = () => {
-  let x;
-  let y;
-  let _x;
-  let _y;
-  const canvas = touchWrapper;
-  const rect = canvas.getBoundingClientRect();
-  if (directionStatus.value != 0 && directionStatus.value != 180) {
-    // 左右旋转
-    _x = parseInt(
-      (event.clientY - rect.top) * (imgWidth / canvas.clientHeight)
-    );
-    _y = parseInt(
-      (event.clientX - rect.left) * (imgHeight / canvas.clientWidth)
-    );
-    x = _y;
-    y = _x;
-  } else {
-    _x = parseInt(
-      (event.clientX - rect.left) * (imgWidth / canvas.clientWidth)
-    );
-    x = directionStatus.value == 180 ? imgWidth - _x : _x;
-    //
-    _y = parseInt(
-      (event.clientY - rect.top) * (imgHeight / canvas.clientHeight)
-    );
-    y = directionStatus.value == 180 ? imgHeight - _y : _y;
-  }
-  inputBoxStyle.value = {
-    left: `${event.clientX - rect.left}px`,
-    top: `${event.clientY - rect.top}px`,
-  };
-  return {
-    x,
-    y,
-  };
-};
+/**
+ * 鼠标松开事件
+ * - Scrcpy 模式：发送 click 指令（单次点击完成）
+ * - Minicap 模式：判断是 tap（单击）还是 swipe（滑动）
+ *   - 起点与终点一致 → 发送 tap 指令
+ *   - 起点与终点不同 → 发送 swipe 指令（含起点和终点坐标）
+ *   - 长按期间已发送 longPress，则不再触发 tap
+ */
 const mouseup = (event) => {
   if (!isFixTouch) {
     if (isPress) {
       isPress = false;
+      const { x, y } = getCurLocationForHDC();
       websocket.send(
         JSON.stringify({
           type: 'touch',
-          detail: 'up\n',
+          detail: `click ${x} ${y}\n`,
         })
       );
       inputBox.value.focus();
@@ -1061,7 +1109,7 @@ const mouseup = (event) => {
   } else {
     clearInterval(loop);
     time = 0;
-    const { x, y } = getCurLocationForAdb();
+    const { x, y } = getCurLocationForHDC();
     if (moveX === x && moveY === y) {
       if (!isLongPress) {
         websocket.send(
@@ -1087,24 +1135,29 @@ const mouseup = (event) => {
     isLongPress = false;
   }
 };
+/**
+ * 鼠标离开事件
+ * - Minicap 模式：清除长按定时器
+ * - Scrcpy 模式：仅重置 isPress 状态（不发送指令）
+ */
 const mouseleave = () => {
   if (isFixTouch) {
     clearInterval(loop);
     isLongPress = false;
   } else if (isPress) {
     isPress = false;
-    websocket.send(
-      JSON.stringify({
-        type: 'touch',
-        detail: 'up\n',
-      })
-    );
   }
 };
+/**
+ * 鼠标按下事件
+ * - Scrcpy 模式：发送 down 指令，标记 isPress=true
+ * - Minicap 模式：记录起点坐标，启动长按检测定时器
+ *   - 长按阈值：1000ms，触发 longPress 指令
+ */
 const mousedown = (event) => {
   if (!isFixTouch) {
     // 安卓高版本
-    const { x, y } = getCurLocation();
+    const { x, y } = getCurLocationForHDC();
     isPress = true;
     websocket.send(
       JSON.stringify({
@@ -1113,7 +1166,7 @@ const mousedown = (event) => {
       })
     );
   } else {
-    const { x, y } = getCurLocationForAdb();
+    const { x, y } = getCurLocationForHDC();
     moveX = x;
     moveY = y;
     clearInterval(loop);
@@ -1132,13 +1185,19 @@ const mousedown = (event) => {
     }, 500);
   }
 };
+/**
+ * 鼠标移动事件
+ * - Scrcpy 模式：在按下状态下节流发送 move 指令
+ *   - mouseMoveTime 计数控制：每 2 次 move 事件发送一次指令
+ * - Minicap 模式：不处理 move（由 swipe 逻辑替代）
+ */
 const mousemove = (event) => {
   if (!isFixTouch) {
     if (isPress) {
       if (mouseMoveTime < 1) {
         mouseMoveTime++;
       } else {
-        const { x, y } = getCurLocation();
+        const { x, y } = getCurLocationForHDC();
         websocket.send(
           JSON.stringify({
             type: 'touch',
@@ -1150,6 +1209,11 @@ const mousemove = (event) => {
     }
   }
 };
+/**
+ * 元素调试大图点击事件
+ * 根据点击坐标在元素树中查找命中节点并高亮显示
+ * 支持旋转状态下的坐标转换
+ */
 const touchstart = async (event) => {
   const debugPic = document.getElementById('debugPic');
   const rect = debugPic.getBoundingClientRect();
@@ -1177,6 +1241,7 @@ const touchstart = async (event) => {
   });
   await handleNodeClick(tree.value.getCurrentNode());
 };
+// 从命中元素列表中找面积最小的节点，同面积优先选有 text 的
 const findMinSize = (data) => {
   if (data.length === 0) {
     return null;
@@ -1195,6 +1260,11 @@ const findMinSize = (data) => {
   currentId.value = [result.ele.id];
   return result.ele.id;
 };
+/**
+ * 递归查找坐标命中的元素节点
+ * 通过元素边界框(bStart/bEnd)判断点是否在元素内
+ * 返回所有命中元素（含子元素）的列表
+ */
 const findElementByPoint = (ele, x, y) => {
   const result = [];
   for (const i in ele) {
@@ -1266,6 +1336,25 @@ const print = (data) => {
     );
   }
 };
+/**
+ * 设备控制指令集（单行 websocket.send 封装）
+ * searchDevice - 搜索设备
+ * startProxy - 启动代理
+ * installCert - 安装证书
+ * openApp - 打开指定包名的应用
+ * killApp - 强制关闭指定包名的应用
+ * refreshAppList - 刷新应用列表
+ * clearProxy - 清除代理
+ * uninstallApp - 卸载指定包名的应用
+ * getEleScreen - 获取元素截图
+ * clearLog - 清除日志
+ * runStep - 执行步骤
+ * checkLocation - 检查位置
+ * stopStep - 停止执行步骤
+ * pressKey - 按键事件（home/back等）
+ * batteryDisconnect - 断开电池模拟
+ * batteryReset - 重置电池状态
+ */
 const searchDevice = () => {
   websocket.send(
     JSON.stringify({
@@ -1440,6 +1529,7 @@ const changePic = (type) => {
     })
   );
 };
+// 切换画面显示模式（Scrcpy / Minicap），更新 touchWrapper 引用并持久化到 localStorage
 const changeScreenMode = (type, isInit) => {
   if (isInit !== 1) {
     loading.value = true;
@@ -1459,6 +1549,7 @@ const changeScreenMode = (type, isInit) => {
 const pullPath = ref('');
 const pullLoading = ref(false);
 const pullResult = ref('');
+// 拉取设备端文件（接收文件内容回显在 pullResult）
 const pullFile = () => {
   pullResult.value = '';
   pullLoading.value = true;
@@ -1473,6 +1564,7 @@ const fileLoading = ref(false);
 const upLoadFilePath = ref('');
 const pushPath = ref('');
 const pushLoading = ref(false);
+// 向设备推送文件
 const pushFile = () => {
   pushLoading.value = true;
   websocket.send(
@@ -1585,7 +1677,8 @@ const stopKeyboard = () => {
     })
   );
 };
-const install = (apk) => {
+// 安装 HAP 安装包到鸿蒙设备
+const install = (hap) => {
   if (apk.length > 0) {
     websocket.send(
       JSON.stringify({
@@ -1631,7 +1724,16 @@ const getWebViewForward = () => {
     })
   );
 };
+/**
+ * 关闭所有 WebSocket 连接并销毁资源：
+ * 1. 关闭主控通道 websocket
+ * 2. 关闭画面通道 screenWebsocket，销毁 Scrcpy 实例
+ * 3. 关闭终端通道 terminalWebsocket
+ * 4. 销毁音频播放器
+ * 5. 调用 window.close() 关闭窗口
+ */
 const close = () => {
+  console.log('close');
   if (websocket !== null) {
     websocket.close();
     websocket = null;
@@ -1651,25 +1753,51 @@ const close = () => {
   }
   window.close();
 };
-onBeforeUnmount(() => {
+/**
+ * 统一关闭入口（带幂等守卫）
+ * - 通过 isClosing 标志防止重复调用 close()
+ * - 记录关闭触发原因（便于调试排查）
+ * - 所有外部关闭请求（onclose/error/超时/卸载）都应走此方法
+ */
+const handleClose = (reason = '') => {
+  if (isClosing.value) return;
+  isClosing.value = true;
+  if (reason) {
+    console.log('[HarmonyOSRemote] handleClose reason:', reason);
+  }
+  else {
+    console.log('[HarmonyOSRemote] handleClose ');
+  }
   close();
+};
+onBeforeUnmount(() => {
+  handleClose('onBeforeUnmount');
 });
+/**
+ * 根据设备 ID 获取设备详情并建立远程连接
+ * 流程：GET /controller/devices/{id} → 校验设备状态（ONLINE/DEBUGGING）→ GET /controller/agents/{agentId} → openSocket
+ * 异常：设备离线或状态不符时跳转回设备列表页
+ */
 const getDeviceById = (id) => {
   loading.value = true;
   axios.get('/controller/devices', { params: { id } }).then((resp) => {
-    console.log(resp);
+    console.log('[DEBUG] getDeviceById response:', resp.code, resp.data?.status);
     if (resp.code === 2000) {
       device.value = resp.data;
-      if (device.value.status !== 'ONLINE') {
+      const allowedStatuses = ['ONLINE', 'DEBUGGING'];
+      if (!allowedStatuses.includes(device.value.status)) {
+        console.log('[DEBUG] Device not ONLINE/DEBUGGING, status:', device.value.status);
         ElMessage.error({
           message: $t('harmonyOSRemoteTS.deviceFail'),
         });
         router.replace('/Index/Devices');
         return;
       }
+      console.log('[DEBUG] Device is ONLINE, fetching agent...');
       axios
         .get('/controller/agents', { params: { id: device.value.agentId } })
         .then((resp) => {
+          console.log('[DEBUG] Agent response:', resp.code, resp.data ? 'ok' : 'null');
           if (resp.code === 2000) {
             agent.value = resp.data;
             openSocket(
@@ -1681,6 +1809,8 @@ const getDeviceById = (id) => {
           }
         });
     }
+  }).catch((err) => {
+    console.error('[DEBUG] getDeviceById error:', err);
   });
 };
 /**
@@ -1688,6 +1818,7 @@ const getDeviceById = (id) => {
  */
 let audioPlayer = null;
 const isConnectAudio = ref(false);
+// 初始化音频播放器：创建 AudioProcessor 实例并绑定 WebSocket 错误处理
 const initAudioPlayer = () => {
   audioPlayer = new AudioProcessor({
     node: 'audio-player',
@@ -1700,6 +1831,7 @@ const initAudioPlayer = () => {
     destroyAudio();
   });
 };
+// 播放/开启远程音频
 const playAudio = () => {
   if (audioPlayer) {
     ElMessage.warning({
@@ -1713,6 +1845,7 @@ const playAudio = () => {
     message: $t('harmonyOSRemoteTS.audio'),
   });
 };
+// 销毁音频播放器
 const destroyAudio = () => {
   audioPlayer.onDestroy();
   audioPlayer = null;
@@ -1741,7 +1874,14 @@ const idleCount = ref(0);
   
 //   console.log('onActivated');
 // })
-// 首次加载执行
+/**
+ * 组件挂载生命周期：
+ * 1. 初始化项目信息（从 Vuex 或 API 获取）
+ * 2. 根据路由参数获取设备详情 → 校验状态 → 获取 Agent → 建立 WebSocket 连接
+ * 3. 加载远程超时和空闲超时配置
+ * 4. 绑定全局 mouse 事件用于活跃时间检测
+ * 5. 启动空闲检测定时器（checkAlive，每秒 tick 检查）
+ */
 onMounted(() => {
   console.log('mounted');
   if (store.state.project.id) {
@@ -1766,6 +1906,7 @@ onMounted(() => {
 });
 const remoteTimeout = ref(0);
 const ticker = ref(0);
+// 获取远程超时配置（秒），同时启动每秒 tick 的计时器
 const getRemoteTimeout = () => {
   axios.get('/controller/confList/getRemoteTimeout').then((resp) => {
     remoteTimeout.value = resp.data;
@@ -1775,18 +1916,24 @@ const getRemoteTimeout = () => {
   });
 };
 const idleTimeout = ref(0);
+// 获取空闲超时配置（秒）
 const getIdleTimeout = () => {
   axios.get('/controller/confList/getIdleTimeout').then((resp) => {
     idleTimeout.value = resp.data;
   });
 };
 
+/**
+ * 空闲检测定时器（每秒执行）
+ * 当用户活跃时间(activeTime)与当前时间差超过空闲超时阈值时
+ * 触发 handleClose('idle timeout') 自动关闭远程连接
+ */
 const checkAlive = () => {
   setInterval(() => {
     idleCount.value++;
     const nowTime = new Date().getTime();
     if (nowTime - activeTime > idleTimeout.value * 60 * 1000) {
-      close();
+      handleClose('idle timeout');
     }
   }, 1000);
 };
@@ -1890,7 +2037,7 @@ const checkAlive = () => {
                 <Cellphone />
               </el-icon>
               <RenderDeviceName
-                style="color: #e6a23c; margin-left: 5px"
+                sclosePagetyle="color: #e6a23c; margin-left: 5px"
                 :device="device"
               />
               <el-popover placement="bottom-end" width="270" trigger="hover">
