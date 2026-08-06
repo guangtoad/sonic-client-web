@@ -526,8 +526,28 @@ const setImgData = () => {
   imgUrl.value = imageUrl;
   const canvas = document.getElementById('debugPic');
   img.onload = function () {
-    canvas.width = img.width;
-    canvas.height = img.height;
+    // 画布基准统一用 device.size（物理分辨率 dw/dh），imgWidth 作为兜底
+    // device.size 来自页面初始化 HTTP 请求，比 imgWidth（WebSocket size 消息）更早就绪
+    // 避免 imgWidth 未加载时 canvas 尺寸为 0 → 高亮框绘制失败
+    const sizeArr = (device.value.size || '').split('x');
+    let baseW = sizeArr.length === 2 ? parseInt(sizeArr[0], 10) : 0;
+    let baseH = sizeArr.length === 2 ? parseInt(sizeArr[1], 10) : 0;
+    // device.size 未就绪时兜底用 imgWidth（可能也为 0，但至少多一层保护）
+    if (baseW <= 0) baseW = imgWidth || img.width;
+    if (baseH <= 0) baseH = imgHeight || img.height;
+    if (directionStatus.value === 90 || directionStatus.value === 270) {
+      canvas.width = baseH;
+      canvas.height = baseW;
+    } else {
+      canvas.width = baseW;
+      canvas.height = baseH;
+    }
+    // 显示比例与视频画面一致（物理比例 = 画面比例，只是数值不同）
+    const ar =
+      directionStatus.value === 90 || directionStatus.value === 270
+        ? `${baseH} / ${baseW}`
+        : `${baseW} / ${baseH}`;
+    canvas.style.aspectRatio = ar;
   };
   isShowImg.value = true;
 };
@@ -789,6 +809,95 @@ const screenWebsocketOnmessage = (message) => {
   }
 };
 /**
+ * 鸿蒙 UI 树适配器
+ * 将原生 uitree 结构（attributes/bounds）转换为前端元素检查逻辑所需的 Android 风格结构（detail/bStart/bEnd/label/id）
+ * 使 findElementByPoint / handleNodeClick / findBestXpath / filterNode / el-tree 模板等逻辑可零改动复用
+ *
+ * 坐标对齐：鸿蒙 bounds 为设备物理分辨率坐标，这里按 imgWidth/deviceWidth、imgHeight/deviceHeight
+ * 缩放到 Scrcpy 画面坐标系，与 touchstart 点击坐标对齐
+ *
+ * 字段映射：
+ *   attributes.bounds  → detail.bStart / detail.bEnd（解析 "[x1,y1][x2,y2]" 并缩放）
+ *   attributes.id/key  → detail['resource-id']
+ *   attributes.text    → detail.text
+ *   attributes.description → detail['content-desc']
+ *   attributes.type    → detail.class
+ *   自增 id            → node.id（el-tree node-key）
+ *   `<type>text|id`    → node.label
+ *   node.children      → node.children（递归）
+ */
+let harmonyNodeId = 0;
+const transformHarmonyTree = (node) => {
+  if (!node) return null;
+  const attr = node.attributes || {};
+  // 解析 bounds "[x1,y1][x2,y2]"
+  let bx1 = 0;
+  let by1 = 0;
+  let bx2 = 0;
+  let by2 = 0;
+  const m = (attr.bounds || '').match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
+  if (m) {
+    bx1 = parseInt(m[1], 10);
+    by1 = parseInt(m[2], 10);
+    bx2 = parseInt(m[3], 10);
+    by2 = parseInt(m[4], 10);
+  }
+
+  // bounds 保留设备物理分辨率坐标（不缩放）
+  // 坐标基准统一为 device.size（物理分辨率），由 print/touchstart 实时缩放
+  // 这样彻底脱离 imgWidth 的加载时机依赖：
+  //   - device.size 来自页面初始化 HTTP 请求，openSocket 之前就绪
+  //   - imgWidth 来自 WebSocket size 消息，异步到达，可能晚于 tree 或加载失败
+  const type = attr.type || '';
+  const idVal = attr.id || attr.key || '';
+  const text = attr.text || '';
+  const desc = attr.description || '';
+  harmonyNodeId += 1;
+  return {
+    id: harmonyNodeId,
+    label: `<${type}>${text || idVal}`,
+    detail: {
+      bStart: `${bx1},${by1}`,
+      bEnd: `${bx2},${by2}`,
+      // 增加 bounds 字段，供模板显示
+      bounds: `[${bx1},${by1}][${bx2},${by2}]`,
+      'resource-id': idVal,
+      text,
+      'content-desc': desc,
+      class: type,
+      // 位置信息（供模板 computedCenter 使用，与 bStart/bEnd 同坐标系）
+      x: `${bx1},${by1}`,
+      y: `${bx2},${by2}`,
+      width: bx2 - bx1,
+      height: by2 - by1,
+      index: '',
+      package: attr.bundleName || '',
+      xpath: '',
+      // Android uiautomator 风格布尔属性，供模板 JSON.parse 使用
+      // 鸿蒙 attributes 字符串值 "true"/"false" 直接复用，缺失或空值兜底 "false"
+      // 注意：JSON.parse("") 会报错，故不能用空字符串兜底
+      checkable: attr.checkable || 'false',
+      checked: attr.checked || 'false',
+      clickable: attr.clickable || 'false',
+      selected: attr.selected || 'false',
+      displayed: attr.visible || 'false', // 鸿蒙 visible → Android displayed
+      enabled: attr.enabled || 'false',
+      focusable: attr.focusable || 'false', // 鸿蒙无此字段，兜底
+      focused: attr.focused || 'false',
+      'long-clickable': attr.longClickable || 'false', // 鸿蒙 longClickable → long-clickable
+      scrollable: attr.scrollable || 'false',
+      // 保留鸿蒙特有字段，便于后续增强定位策略
+      accessibilityId: attr.accessibilityId || '',
+      hint: attr.hint || '',
+      hierarchy: attr.hierarchy || '',
+      hashcode: attr.hashcode || '',
+    },
+    children: (node.children || [])
+      .map(transformHarmonyTree)
+      .filter(Boolean),
+  };
+};
+/**
  * 主控通道消息分发器
  * 处理 perfDetail / poco / proxyResult / pullResult / pushResult / paste / sas / tree / treeFail / installFinish / uninstallFinish / openDriver / step / status / forwardView / eleScreen / error 消息
  */
@@ -872,11 +981,16 @@ const websocketOnmessage = (message) => {
         message: $t('harmonyOSRemoteTS.getEle.success'),
       });
       const result = JSON.parse(message.data);
+      // 鸿蒙原生 uitree 适配：转换为 Android 风格结构后赋给 elementData
+      // 根节点是单个对象，需包成数组；id 从 1 开始，默认选中根节点
+      harmonyNodeId = 0;
+      elementData.value = result.detail
+        ? [transformHarmonyTree(result.detail)]
+        : [];
       currentId.value = [1];
-      elementData.value = result.detail;
       isShowTree.value = true;
       elementLoading.value = false;
-      webViewData.value = result.webView;
+      webViewData.value = result.webView || [];
       activity.value = result.activity;
       break;
     }
@@ -1217,22 +1331,22 @@ const mousemove = (event) => {
 const touchstart = async (event) => {
   const debugPic = document.getElementById('debugPic');
   const rect = debugPic.getBoundingClientRect();
+  // 屏幕坐标 → 设备物理坐标（与 bounds 基准一致）
+  // 基准用 device.size（物理分辨率 dw/dh），imgWidth 兜底
+  // 旋转时物理宽高交换：横屏物理宽=dh、物理高=dw
+  const sizeArr = (device.value.size || '').split('x');
+  let dw = sizeArr.length === 2 ? parseInt(sizeArr[0], 10) : 0;
+  let dh = sizeArr.length === 2 ? parseInt(sizeArr[1], 10) : 0;
+  if (dw <= 0) dw = imgWidth;
+  if (dh <= 0) dh = imgHeight;
   let x;
   let y;
   if (directionStatus.value === 0 || directionStatus.value === 180) {
-    x = parseInt(
-      (event.clientX - rect.left) * (imgWidth / debugPic.clientWidth)
-    );
-    y = parseInt(
-      (event.clientY - rect.top) * (imgHeight / debugPic.clientHeight)
-    );
+    x = parseInt((event.clientX - rect.left) * (dw / debugPic.clientWidth));
+    y = parseInt((event.clientY - rect.top) * (dh / debugPic.clientHeight));
   } else {
-    x = parseInt(
-      (event.clientX - rect.left) * (imgHeight / debugPic.clientWidth)
-    );
-    y = parseInt(
-      (event.clientY - rect.top) * (imgWidth / debugPic.clientHeight)
-    );
+    x = parseInt((event.clientX - rect.left) * (dh / debugPic.clientWidth));
+    y = parseInt((event.clientY - rect.top) * (dw / debugPic.clientHeight));
   }
   await nextTick(() => {
     tree.value.setCurrentKey(
@@ -1320,19 +1434,27 @@ const print = (data) => {
   const b = Math.round(Math.random() * 255);
   const c = Math.round(Math.random() * 255);
   g.fillStyle = `rgba(${a}, ${b}, ${c}, 0.6)`;
+  // bounds 为物理坐标，缩放基准用 device.size（dw/dh），imgWidth 兜底
+  // canvas.width 由 setImgData 设为 dw（0°）或 dh（90/270°），所以缩放系数恒为 1
+  // 即使 imgWidth 加载失败，只要 device.size 可用就能正确绘制
+  const sizeArr = (device.value.size || '').split('x');
+  let dw = sizeArr.length === 2 ? parseInt(sizeArr[0], 10) : 0;
+  let dh = sizeArr.length === 2 ? parseInt(sizeArr[1], 10) : 0;
+  if (dw <= 0) dw = imgWidth;
+  if (dh <= 0) dh = imgHeight;
   if (directionStatus.value === 0 || directionStatus.value === 180) {
     g.fillRect(
-      eleStartX * (canvas.width / imgWidth),
-      eleStartY * (canvas.height / imgHeight),
-      (eleEndX - eleStartX) * (canvas.width / imgWidth),
-      (eleEndY - eleStartY) * (canvas.height / imgHeight)
+      eleStartX * (canvas.width / dw),
+      eleStartY * (canvas.height / dh),
+      (eleEndX - eleStartX) * (canvas.width / dw),
+      (eleEndY - eleStartY) * (canvas.height / dh)
     );
   } else {
     g.fillRect(
-      eleStartX * (canvas.width / imgHeight),
-      eleStartY * (canvas.height / imgWidth),
-      (eleEndX - eleStartX) * (canvas.width / imgHeight),
-      (eleEndY - eleStartY) * (canvas.height / imgWidth)
+      eleStartX * (canvas.width / dh),
+      eleStartY * (canvas.height / dw),
+      (eleEndX - eleStartX) * (canvas.width / dh),
+      (eleEndY - eleStartY) * (canvas.height / dw)
     );
   }
 };
@@ -4510,6 +4632,7 @@ const checkAlive = () => {
 #debugPic {
   width: 100%;
   height: auto;
+  display: block;
 }
 
 .url-install-box {
