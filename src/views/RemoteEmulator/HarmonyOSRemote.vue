@@ -233,20 +233,20 @@ const switchTabs = (e) => {
 };
 // 性能监控：发送 startPerfmon 指令开始采集指定包名的性能数据
 const startPerfmon = (bundleId) => {
-  websocket.send(
-    JSON.stringify({
+  let sendData = JSON.stringify({
       type: 'startPerfmon',
       bundleId,
-    })
-  );
+    });
+    console.log('[DEBUG] startPerfmon sendData:', sendData);
+  websocket.send(sendData);
 };
 // 性能监控：停止性能采集
 const stopPerfmon = () => {
-  websocket.send(
-    JSON.stringify({
+  let sendData = JSON.stringify({
       type: 'stopPerfmon',
-    })
-  );
+    });
+    console.log('[DEBUG] stopPerfmon sendData:', sendData);
+  websocket.send(sendData);
 };
 const img = import.meta.glob('../../assets/img/*', { eager: true });
 let websocket = null;
@@ -1329,6 +1329,7 @@ const mousemove = (event) => {
  * 支持旋转状态下的坐标转换
  */
 const touchstart = async (event) => {
+  console.log(`touchstart event = ${JSON.stringify(event)}`);
   const debugPic = document.getElementById('debugPic');
   const rect = debugPic.getBoundingClientRect();
   // 屏幕坐标 → 设备物理坐标（与 bounds 基准一致）
@@ -1412,12 +1413,14 @@ const findElementByPoint = (ele, x, y) => {
   return result;
 };
 const handleNodeClick = (data) => {
+  console.log(`handleNodeClick data = ${JSON.stringify(data)}`);
   if (data !== null) {
     elementDetail.value = data.detail;
     print(data);
   }
 };
 const print = (data) => {
+  console.log(`print data = ${JSON.stringify(data)}`);
   const canvas = document.getElementById('debugPic');
   const g = canvas.getContext('2d');
   g.clearRect(0, 0, canvas.width, canvas.height);
@@ -1442,21 +1445,23 @@ const print = (data) => {
   let dh = sizeArr.length === 2 ? parseInt(sizeArr[1], 10) : 0;
   if (dw <= 0) dw = imgWidth;
   if (dh <= 0) dh = imgHeight;
+  let gx = 0;
+  let gy = 0;
+  let gWidth = 0;
+  let gHeight = 0;
   if (directionStatus.value === 0 || directionStatus.value === 180) {
-    g.fillRect(
-      eleStartX * (canvas.width / dw),
-      eleStartY * (canvas.height / dh),
-      (eleEndX - eleStartX) * (canvas.width / dw),
-      (eleEndY - eleStartY) * (canvas.height / dh)
-    );
+    gx = eleStartX / imgWidth * canvas.width;
+    gy = eleStartY / imgWidth * canvas.width;
+    gWidhth = (eleEndX - eleStartX) / imgWidth * canvas.width;
+    gHeight = (eleEndY - eleStartY) / imgWidth * canvas.width;
   } else {
-    g.fillRect(
-      eleStartX * (canvas.width / dh),
-      eleStartY * (canvas.height / dw),
-      (eleEndX - eleStartX) * (canvas.width / dh),
-      (eleEndY - eleStartY) * (canvas.height / dw)
-    );
+      gx = eleStartX / imgWidth * canvas.width;
+      gy = eleStartY / imgWidth * canvas.width;
+      gWidth = (eleEndX - eleStartX) / imgWidth * canvas.width;
+      gHeight = (eleEndY - eleStartY) / imgWidth * canvas.width;
   }
+  
+    g.fillRect(gx, gy, gWidth, gHeight);
 };
 /**
  * 设备控制指令集（单行 websocket.send 封装）
@@ -1570,48 +1575,47 @@ const setStepLog = (data) => {
 const runStep = () => {
   debugLoading.value = true;
   activeTab2.value = 'log';
-  websocket.send(
-    JSON.stringify({
+  let sendData =  JSON.stringify({
       type: 'debug',
       detail: 'runStep',
       caseId: testCase.value.id,
       pwd: device.value.password,
-    })
-  );
+    });
+    console.log('[DEBUG] runStep sendData:', sendData);
+  websocket.send(sendData);
 };
 const checkLocation = (data) => {
   checkElementLoading.value = true;
-  websocket.send(
-    JSON.stringify({
+  let sendData = JSON.stringify({
       type: 'debug',
       detail: 'checkLocation',
       element: data.eleValue,
       eleType: data.eleType,
       pwd: device.value.password,
-    })
-  );
+    });
+    console.log('[DEBUG] checkLocation sendData:', sendData);
+  websocket.send(sendData);
 };
 const stopStep = () => {
   debugLoading.value = false;
-  websocket.send(
-    JSON.stringify({
+  let sendData = JSON.stringify({
       type: 'debug',
       detail: 'stopStep',
       udId: device.value.udId,
       caseId: testCase.value.id,
       pf: device.value.platform,
-    })
-  );
+    });
+  websocket.send(sendData);
 };
 const pressKey = (keyNum) => {
-  websocket.send(
-    JSON.stringify({
+  let sendData = JSON.stringify({
       type: 'keyEvent',
       detail: keyNum,
-    })
-  );
+    });
+  websocket.send(sendData);
 };
 const batteryDisconnect = () => {
+  
   websocket.send(
     JSON.stringify({
       type: 'battery',
@@ -1840,11 +1844,11 @@ const getPoco = (engine, port) => {
 };
 const getWebViewForward = () => {
   webViewLoading.value = true;
-  websocket.send(
-    JSON.stringify({
+  let sendData = JSON.stringify({
       type: 'forwardView',
-    })
-  );
+    });
+    console.log('[DEBUG] getWebViewForward sendData:', sendData);
+  websocket.send(sendData);
 };
 /**
  * 关闭所有 WebSocket 连接并销毁资源：
@@ -1906,6 +1910,7 @@ const getDeviceById = (id) => {
     console.log('[DEBUG] getDeviceById response:', resp.code, resp.data?.status);
     if (resp.code === 2000) {
       device.value = resp.data;
+      console.log('[DEBUG] getDeviceById Device:', JSON.stringify(device.value));
       const allowedStatuses = ['ONLINE', 'DEBUGGING'];
       if (!allowedStatuses.includes(device.value.status)) {
         console.log('[DEBUG] Device not ONLINE/DEBUGGING, status:', device.value.status);
@@ -3641,7 +3646,7 @@ const checkAlive = () => {
                 <el-tab-pane :label="$t('publicStepTS.list')" name="step">
                   <step-list
                     :is-show-run="true"
-                    :platform="1"
+                    :platform="6"
                     :is-driver-finish="isDriverFinish"
                     :case-id="testCase['id']"
                     :project-id="project['id']"
@@ -3708,7 +3713,7 @@ const checkAlive = () => {
                 v-if="project !== null"
                 ref="caseList"
                 :project-id="project['id']"
-                :platform="1"
+                :platform="6"
                 :is-read-only="true"
                 @select-case="selectCase"
               ></test-case-list>

@@ -321,6 +321,11 @@ const findAgentById = (id) => {
               :src="getImg(device.manufacturer)"
             />
             <img
+              v-else-if="device.platform === 6            "
+              style="width: 22px"
+              :src="img['./../assets/img/HW.jpg'].default"
+            />
+            <img
               v-else-if="
                 getImg(device.manufacturer) ==
                 img['./../assets/img/unName.jpg'].default
@@ -352,6 +357,12 @@ const findAgentById = (id) => {
               style="width: 22px"
               :src="getImg('IOS')"
             />
+            <img
+              v-if="device.platform === 6"
+              style="width: 22px"
+              :src="getImg('HMOS')"
+            />
+
             <span style="margin-left: 6px">{{ device.version }}</span>
           </el-form-item>
           <el-form-item :label="$t('devices.form.battery.level')">
