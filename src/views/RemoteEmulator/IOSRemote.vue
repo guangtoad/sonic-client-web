@@ -292,15 +292,24 @@ const killApp = (pkg) => {
   });
 };
 const refreshAppList = () => {
+  // terminalWebsocket 可能在以下情况为 null：
+  //   1. openSocket 尚未调用（用户在 WebSocket 建立前就切到 apps/perfmon 标签）
+  //   2. 连接已关闭（close 后置为 null）
+  // 直接调用 .send() 会抛 "Cannot read properties of null (reading 'send')"
+  if (!terminalWebsocket) {
+    ElMessage.warning({
+      message: $t('IOSRemote.loadingAppList'),
+    });
+    return;
+  }
   appList.value = [];
   ElMessage.success({
     message: $t('IOSRemote.loadingAppList'),
   });
-  terminalWebsocket.send(
-    JSON.stringify({
-      type: 'appList',
-    })
-  );
+  const sendData = JSON.stringify({
+    type: 'appList',
+  });
+  terminalWebsocket.send(sendData);
 };
 const uninstallApp = (pkg) => {
   ElMessage.success({
@@ -375,9 +384,10 @@ const getImg = (name) => {
     name = 'Lenovo';
   }
   try {
-    result = img[`../../assets/img/${name}.jpg`].default;
+    // 归一化后的 key 带 './' 前缀（见上方 import.meta.glob 处理），访问时需对齐
+    result = img[`./../../assets/img/${name}.jpg`].default;
   } catch {
-    result = img['../../assets/img/unName.jpg'].default;
+    result = img['./../../assets/img/unName.jpg'].default;
   }
   return result;
 };

@@ -65,7 +65,7 @@ const suiteForm = ref(null);
 const platformList = [
   { name: 'Android', value: 1, img: 'ANDROID' },
   { name: 'iOS', value: 2, img: 'IOS' },
-  { name: 'HarmonyOS', value: 3, img: 'HMOS' },
+  { name: 'HarmonyOS', value: 6, img: 'HMOS' },
 ];
 const testSuite = ref({
   id: null,
@@ -172,6 +172,7 @@ const getSuiteInfo = (id) => {
   });
 };
 const filterDevice = (name) => {
+  console.log("filterDevice");
   if (name) {
     deviceData.value = deviceDataBack.value.filter((item) => {
       if (

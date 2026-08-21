@@ -129,12 +129,13 @@ const directionStatus = {
 };
 let moveX = 0;
 let moveY = 0;
-let isFixTouch = false;
 let isPress = false;
+let isFixTouch = false;
 let loop = null;
 let time = 0;
 let isLongPress = false;
-let mouseMoveTime = 0;
+let lastMoveTime = 0;
+let startTime = 0;
 let touchWrapper = null;
 const pic = ref('高');
 const _screenMode = window.localStorage.getItem('screenMode');
@@ -329,7 +330,7 @@ const filterTableData = computed(() => {
   transformPageable(list);
   return list;
 });
-// 切换触控修复模式：在 Minicap 和 Scrcpy 模式间切换
+// 切换触控修复模式（保留兼容性，事件处理已统一为 tap/swipe 模式）
 const fixTouch = () => {
   ElMessage.success({
     message: $t('harmonyOSRemoteTS.repairedSuccess'),
@@ -1178,150 +1179,138 @@ const scaleToDevice = (x, y) => {
  * 将鼠标在画面上的相对坐标转换为设备实际点击坐标
  * 直接使用 canvas getBoundingClientRect 计算，不考虑旋转
  * 通过 scaleToDevice 缩放到设备物理分辨率
+ * @param {MouseEvent} event - 鼠标事件对象
  */
-const getCurLocationForHDC = () => {
-  console.log(`getCurLocationForHDC ********* start ********`);
-  let x;
-  let y;
-  let _x;
-  let _y;
+const getCurLocationForHDC = (event) => {
   const canvas = touchWrapper;
+  if (!canvas || !event) return { x: 0, y: 0 };
   const rect = canvas.getBoundingClientRect();
-  _y = parseInt(
-      (event.clientY - rect.top)  / rect.height * imgHeight
-    );
-  _x = parseInt(
-      (event.clientX - rect.left)  / rect.width * imgWidth
-    );
-  x = _x;
-  y = _y;
-  console.log(`getCurLocationForHDC x: ${x}, y: ${y}`);
-  console.log(`getCurLocationForHDC ********* end ********`);
-  return scaleToDevice(x, y);
-};
-/**
- * 鼠标松开事件
- * - Scrcpy 模式：发送 click 指令（单次点击完成）
- * - Minicap 模式：判断是 tap（单击）还是 swipe（滑动）
- *   - 起点与终点一致 → 发送 tap 指令
- *   - 起点与终点不同 → 发送 swipe 指令（含起点和终点坐标）
- *   - 长按期间已发送 longPress，则不再触发 tap
- */
-const mouseup = (event) => {
-  if (!isFixTouch) {
-    if (isPress) {
-      isPress = false;
-      const { x, y } = getCurLocationForHDC();
-      websocket.send(
-        JSON.stringify({
-          type: 'touch',
-          detail: `click ${x} ${y}\n`,
-        })
-      );
-      inputBox.value.focus();
-    }
-  } else {
-    clearInterval(loop);
-    time = 0;
-    const { x, y } = getCurLocationForHDC();
-    if (moveX === x && moveY === y) {
-      if (!isLongPress) {
-        websocket.send(
-          JSON.stringify({
-            type: 'debug',
-            detail: 'tap',
-            point: `${x},${y}`,
-          })
-        );
-        inputBox.value.focus();
-      }
-    } else {
-      websocket.send(
-        JSON.stringify({
-          type: 'debug',
-          detail: 'swipe',
-          pointA: `${moveX},${moveY}`,
-          pointB: `${x},${y}`,
-        })
-      );
-      inputBox.value.focus();
-    }
-    isLongPress = false;
-  }
-};
-/**
- * 鼠标离开事件
- * - Minicap 模式：清除长按定时器
- * - Scrcpy 模式：仅重置 isPress 状态（不发送指令）
- */
-const mouseleave = () => {
-  if (isFixTouch) {
-    clearInterval(loop);
-    isLongPress = false;
-  } else if (isPress) {
-    isPress = false;
-  }
+  let _x = parseInt(
+    ((event.clientX - rect.left) / rect.width) * imgWidth
+  );
+  let _y = parseInt(
+    ((event.clientY - rect.top) / rect.height) * imgHeight
+  );
+  return scaleToDevice(_x, _y);
 };
 /**
  * 鼠标按下事件
- * - Scrcpy 模式：发送 down 指令，标记 isPress=true
- * - Minicap 模式：记录起点坐标，启动长按检测定时器
- *   - 长按阈值：1000ms，触发 longPress 指令
+ * 发送 down 指令标记按下状态，启动长按检测定时器
+ * - 长按阈值：1000ms，触发 longPress 指令
  */
 const mousedown = (event) => {
-  if (!isFixTouch) {
-    // 安卓高版本
-    const { x, y } = getCurLocationForHDC();
-    isPress = true;
-    websocket.send(
-      JSON.stringify({
-        type: 'touch',
-        detail: `down ${x} ${y}\n`,
-      })
-    );
-  } else {
-    const { x, y } = getCurLocationForHDC();
-    moveX = x;
-    moveY = y;
-    clearInterval(loop);
-    loop = setInterval(() => {
-      time += 500;
-      if (time >= 1000 && isLongPress === false) {
-        websocket.send(
-          JSON.stringify({
-            type: 'debug',
-            detail: 'longPress',
-            point: `${moveX},${moveY}`,
-          })
-        );
-        isLongPress = true;
-      }
-    }, 500);
-  }
+  const { x, y } = getCurLocationForHDC(event);
+  moveX = x;
+  moveY = y;
+  isPress = true;
+  lastMoveTime = 0;
+  startTime = Date.now();
+  clearInterval(loop);
+  loop = setInterval(() => {
+    time += 500;
+    if (time >= 1000 && !isLongPress) {
+      websocket.send(
+        JSON.stringify({
+          type: 'debug',
+          detail: 'longPress',
+          point: `${moveX},${moveY}`,
+        })
+      );
+      isLongPress = true;
+    }
+  }, 500);
+  websocket.send(
+    JSON.stringify({
+      type: 'touch',
+      detail: `down ${x} ${y}\n`,
+    })
+  );
 };
+
 /**
  * 鼠标移动事件
- * - Scrcpy 模式：在按下状态下节流发送 move 指令
- *   - mouseMoveTime 计数控制：每 2 次 move 事件发送一次指令
- * - Minicap 模式：不处理 move（由 swipe 逻辑替代）
+ * 在按下状态下实时发送 move 指令，带时间节流（16ms ≈ 60fps）
+ * 使滑动过程跟手，无延迟
  */
 const mousemove = (event) => {
-  if (!isFixTouch) {
-    if (isPress) {
-      if (mouseMoveTime < 1) {
-        mouseMoveTime++;
-      } else {
-        const { x, y } = getCurLocationForHDC();
-        websocket.send(
-          JSON.stringify({
-            type: 'touch',
-            detail: `move ${x} ${y}\n`,
-          })
-        );
-        mouseMoveTime = 0;
-      }
+  if (!isPress) return;
+  const now = Date.now();
+  if (now - lastMoveTime < 16) return;
+  lastMoveTime = now;
+  const { x, y } = getCurLocationForHDC(event);
+  websocket.send(
+    JSON.stringify({
+      type: 'touch',
+      detail: `move ${x} ${y}\n`,
+    })
+  );
+};
+
+/**
+ * 鼠标松开事件
+ * 发送 up 指令结束触摸，判断是 tap（单击）还是 swipe（滑动）
+ * - 起点与终点一致 → 发送 tap 指令
+ * - 起点与终点不同 → 发送 swipe 指令（含起点和终点坐标）
+ * - 长按期间已发送 longPress，则不再触发 tap
+ */
+const mouseup = (event) => {
+  clearInterval(loop);
+  time = 0;
+  isPress = false;
+  const { x, y } = getCurLocationForHDC(event);
+  websocket.send(
+    JSON.stringify({
+      type: 'touch',
+      detail: `up ${x} ${y}\n`,
+    })
+  );
+  if (moveX === x && moveY === y) {
+    if (!isLongPress) {
+      websocket.send(
+        JSON.stringify({
+          type: 'debug',
+          detail: 'tap',
+          point: `${x},${y}`,
+        })
+      );
+      inputBox.value.focus();
     }
+  } else {
+    const endTime = Date.now();
+    const duration = Math.max(endTime - startTime, 1);
+    const swipeData = {
+      type: 'debug',
+      detail: 'swipe',
+      pointA: `${moveX},${moveY}`,
+      pointB: `${x},${y}`,
+      duration: duration,
+    };
+    console.log('[HarmonyOSRemote] swipe 发送数据:', {
+      pointA: swipeData.pointA,
+      pointB: swipeData.pointB,
+      duration: swipeData.duration,
+      moveX,
+      moveY,
+      endX: x,
+      endY: y,
+      startTime,
+      endTime,
+      websocketReady: websocket && websocket.readyState === 1,
+    });
+    websocket.send(JSON.stringify(swipeData));
+    inputBox.value.focus();
   }
+  isLongPress = false;
+};
+
+/**
+ * 鼠标离开事件
+ * 清除长按定时器，重置所有按压状态
+ */
+const mouseleave = () => {
+  clearInterval(loop);
+  isLongPress = false;
+  isPress = false;
 };
 /**
  * 元素调试大图点击事件
@@ -1805,14 +1794,13 @@ const stopKeyboard = () => {
 };
 // 安装 HAP 安装包到鸿蒙设备
 const install = (hap) => {
-  if (apk.length > 0) {
-    websocket.send(
-      JSON.stringify({
-        type: 'debug',
-        detail: 'install',
-        apk,
-      })
-    );
+  if (hap && hap.length > 0) {
+    const sendData = JSON.stringify({
+      type: 'debug',
+      detail: 'install',
+      hap,
+    });
+    websocket.send(sendData);
     ElMessage.success({
       message: $t('harmonyOSRemoteTS.startInstall'),
     });
@@ -2250,9 +2238,9 @@ const checkAlive = () => {
                 :style="canvasRectInfo"
                 autoplay
                 muted
-                @mouseup="mouseup"
-                @mousemove="mousemove"
                 @mousedown="mousedown"
+                @mousemove="mousemove"
+                @mouseup="mouseup"
                 @mouseleave="mouseleave"
               />
               <canvas
@@ -2260,9 +2248,9 @@ const checkAlive = () => {
                 id="canvas"
                 style="display: inline-block"
                 :style="canvasRectInfo"
-                @mouseup="mouseup"
-                @mousemove="mousemove"
                 @mousedown="mousedown"
+                @mousemove="mousemove"
+                @mouseup="mouseup"
                 @mouseleave="mouseleave"
               />
               <audio id="audio-player" hidden></audio>
@@ -2828,13 +2816,7 @@ const checkAlive = () => {
                   </el-alert>
                   <div style="text-align: center; margin-top: 12px">
                     <el-button size="mini" type="primary" @click="sendText"
-                      >{{ $t('harmonyOSRemoteTS.code.clear') }}
-                    </el-button>
-                    <el-button size="mini" type="primary" @click="startKeyboard"
-                      >{{ $t('harmonyOSRemoteTS.code.startKeyboard') }}
-                    </el-button>
-                    <el-button size="mini" type="primary" @click="stopKeyboard"
-                      >{{ $t('harmonyOSRemoteTS.code.stopKeyboard') }}
+                      >{{ $t('harmonyOSRemoteTS.code.send') }}
                     </el-button>
                   </div>
                 </el-card>
@@ -3072,12 +3054,12 @@ const checkAlive = () => {
                   >
                     <i class="el-icon-upload"></i>
                     <div class="el-upload__text">
-                      {{ $t('harmonyOSRemoteTS.code.apkFile') }}
+                      {{ $t('harmonyOSRemoteTS.code.hapFile') }}
                       <em>{{ $t('devices.detail.uploadImg') }}</em>
                     </div>
                     <template #tip>
                       <div class="el-upload__tip">
-                        {{ $t('harmonyOSRemoteTS.code.onlyAPKFile') }}
+                        {{ $t('harmonyOSRemoteTS.code.onlyHAPFile') }}
                       </div>
                     </template>
                   </el-upload>
@@ -3606,7 +3588,11 @@ const checkAlive = () => {
                           :size="27"
                           :src="
                             getImg(
-                              testCase['platform'] === 1 ? 'ANDROID' : 'IOS'
+                              testCase['platform'] === 1
+                                ? 'ANDROID'
+                                : testCase['platform'] === 6
+                                  ? 'HarmonyOs'
+                                  : 'IOS'
                             )
                           "
                           shape="square"
@@ -3614,7 +3600,9 @@ const checkAlive = () => {
                         {{
                           testCase['platform'] === 1
                             ? $t('publicStepTS.android')
-                            : 'iOS'
+                            : testCase['platform'] === 6
+                              ? $t('publicStepTS.harmonyOS')
+                              : 'iOS'
                         }}
                       </div>
                     </el-descriptions-item>

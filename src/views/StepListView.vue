@@ -119,11 +119,11 @@ onMounted(() => {
               <el-avatar
                 style="margin-right: 10px"
                 :size="27"
-                :src="getImg(testCase['platform'] === 1 ? 'ANDROID' : (testCase['platform'] === 2 ? 'IOS' : 'HMOS'))"
+                :src="getImg(testCase['platform'] === 1 ? 'ANDROID' : (testCase['platform'] === 2 ? 'IOS' : (testCase['platform'] === 6 ? 'HMOS' : 'unName')))"
                 shape="square"
               ></el-avatar>
               {{
-                testCase['platform'] === 1 ? $t('publicStepTS.android') : (testCase['platform'] === 3 ? $t('publicStepTS.harmonyOS') : 'iOS') 
+                testCase['platform'] === 1 ? $t('publicStepTS.android') : (testCase['platform'] === 6 ? $t('publicStepTS.harmonyOS') : 'iOS') 
               }}
             </div>
           </el-form-item>

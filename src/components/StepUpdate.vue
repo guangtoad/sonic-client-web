@@ -1015,12 +1015,6 @@ const iOSOptions = ref([
         label: $t('stepDetail.label.iOSOptions.system.specaction.self'),
         children: [
           {
-            value: 'siriCommand',
-            label: $t(
-              'stepDetail.label.iOSOptions.system.specaction.siriCommand'
-            ),
-          },
-          {
             value: 'sendKeyForce',
             label: $t(
               'stepDetail.label.iOSOptions.system.specaction.sendKeyForce'
@@ -1385,12 +1379,403 @@ const iOSOptions = ref([
     ],
   },
 ]);
+const harmonyOSOptions = ref([
+  {
+    label: $t('stepDetail.label.harmonyOSOptions.system.self'),
+    value: 'system',
+    children: [
+      {
+        value: 'rotateDevice',
+        label: $t('stepDetail.label.harmonyOSOptions.system.rotateDevice.self'),
+        children: [
+          {
+            value: 'lock',
+            label: $t('stepDetail.label.harmonyOSOptions.system.rotateDevice.lock'),
+          },
+          {
+            value: 'unLock',
+            label: $t('stepDetail.label.harmonyOSOptions.system.rotateDevice.unlock'),
+          },
+        ],
+      },
+      {
+        value: 'specaction',
+        label: $t('stepDetail.label.harmonyOSOptions.system.specaction.self'),
+        children: [
+          {
+            value: 'sendKeyForce',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.system.specaction.sendKeyForce'
+            ),
+          },
+          {
+            value: 'swipeByDefinedDirection',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.system.specaction.swipeByDefinedDirection'
+            ),
+          },
+        ],
+      },
+      {
+        value: 'interaction',
+        label: $t('stepDetail.label.harmonyOSOptions.system.interaction.self'),
+        children: [
+          {
+            value: 'keyCode',
+            label: $t('stepDetail.label.harmonyOSOptions.system.interaction.keyCode'),
+          },
+        ],
+      },
+      {
+        value: 'pasteboard',
+        label: $t('stepDetail.label.harmonyOSOptions.system.pasteboard.self'),
+        children: [
+          {
+            value: 'setPasteboard',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.system.pasteboard.setPasteboard'
+            ),
+          },
+          {
+            value: 'getPasteboard',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.system.pasteboard.getPasteboard'
+            ),
+          },
+        ],
+      },
+    ],
+  },
+  {
+    label: $t('stepDetail.label.harmonyOSOptions.app.self'),
+    value: 'app',
+    children: [
+      {
+        value: 'openApp',
+        label: $t('stepDetail.label.harmonyOSOptions.app.openApp'),
+      },
+      {
+        value: 'terminate',
+        label: $t('stepDetail.label.harmonyOSOptions.app.terminate'),
+      },
+      {
+        value: 'install',
+        label: $t('stepDetail.label.harmonyOSOptions.app.install'),
+      },
+      {
+        value: 'uninstall',
+        label: $t('stepDetail.label.harmonyOSOptions.app.uninstall'),
+      },
+      {
+        value: 'runBack',
+        label: $t('stepDetail.label.harmonyOSOptions.app.runBack'),
+      },
+    ],
+  },
+  {
+    label: $t('stepDetail.label.harmonyOSOptions.element.self'),
+    value: 'element',
+    children: [
+      {
+        label: $t('stepDetail.label.harmonyOSOptions.element.xcEle.self'),
+        value: 'xcEle',
+        children: [
+          {
+            value: 'findElementInterval',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.xcEle.findElementInterval'
+            ),
+          },
+          {
+            value: 'isExistEle',
+            label: $t('stepDetail.label.harmonyOSOptions.element.xcEle.isExistEle'),
+          },
+          {
+            value: 'isExistEleNum',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.xcEle.isExistEleNum'
+            ),
+          },
+          {
+            value: 'click',
+            label: $t('stepDetail.label.harmonyOSOptions.element.xcEle.click'),
+          },
+          {
+            value: 'sendKeys',
+            label: $t('stepDetail.label.harmonyOSOptions.element.xcEle.sendKeys'),
+          },
+          {
+            value: 'sendKeysByActions',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.xcEle.sendKeysByActions'
+            ),
+          },
+          {
+            value: 'swipe2',
+            label: $t('stepDetail.label.harmonyOSOptions.element.xcEle.swipe2'),
+          },
+          {
+            value: 'scrollToEle',
+            label: $t('stepDetail.label.harmonyOSOptions.element.xcEle.scrollToEle'),
+          },
+          {
+            value: 'longPress',
+            label: $t('stepDetail.label.harmonyOSOptions.element.xcEle.longPress'),
+          },
+          {
+            value: 'clear',
+            label: $t('stepDetail.label.harmonyOSOptions.element.xcEle.clear'),
+          },
+          {
+            value: 'obtainElementAttr',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.xcEle.obtainElementAttr'
+            ),
+          },
+          {
+            value: 'getElementAttr',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.xcEle.getElementAttr'
+            ),
+          },
+          {
+            value: 'getTextValue',
+            label: $t('stepDetail.label.harmonyOSOptions.element.xcEle.getTextValue'),
+          },
+          {
+            value: 'assertText',
+            label: $t('stepDetail.label.harmonyOSOptions.element.xcEle.assertText'),
+          },
+          {
+            value: 'logElementAttr',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.xcEle.logElementAttr'
+            ),
+          },
+          {
+            value: 'iteratorIOSElement',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.xcEle.iteratorIOSElement'
+            ),
+          },
+          {
+            value: 'setSnapshotMaxDepth',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.xcEle.setSnapshotMaxDepth'
+            ),
+          },
+        ],
+      },
+      {
+        label: $t('stepDetail.label.harmonyOSOptions.element.coordinate.self'),
+        value: 'pointEle',
+        children: [
+          {
+            value: 'tap',
+            label: $t('stepDetail.label.harmonyOSOptions.element.coordinate.tap'),
+          },
+          {
+            value: 'longPressPoint',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.coordinate.longPressPoint'
+            ),
+          },
+          {
+            value: 'swipe',
+            label: $t('stepDetail.label.harmonyOSOptions.element.coordinate.swipe'),
+          },
+        ],
+      },
+      {
+        label: $t('stepDetail.label.harmonyOSOptions.element.poco.self'),
+        value: 'pocoEle',
+        children: [
+          {
+            value: 'startPocoDriver',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.poco.startPocoDriver'
+            ),
+          },
+          {
+            value: 'setDefaultFindPocoElementInterval',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.poco.setDefaultFindPocoElementInterval'
+            ),
+          },
+          {
+            value: 'setTheRealPositionOfTheWindow',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.poco.setTheRealPositionOfTheWindow'
+            ),
+          },
+          {
+            value: 'isExistPocoEle',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.poco.isExistPocoEle'
+            ),
+          },
+          {
+            value: 'isExistPocoEleNum',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.poco.isExistPocoEleNum'
+            ),
+          },
+          {
+            value: 'pocoClick',
+            label: $t('stepDetail.label.harmonyOSOptions.element.poco.pocoClick'),
+          },
+          {
+            value: 'pocoLongPress',
+            label: $t('stepDetail.label.harmonyOSOptions.element.poco.pocoLongPress'),
+          },
+          {
+            value: 'pocoSwipe',
+            label: $t('stepDetail.label.harmonyOSOptions.element.poco.pocoSwipe'),
+          },
+          {
+            value: 'freezeSource',
+            label: $t('stepDetail.label.harmonyOSOptions.element.poco.freezeSource'),
+          },
+          {
+            value: 'thawSource',
+            label: $t('stepDetail.label.harmonyOSOptions.element.poco.thawSource'),
+          },
+          {
+            value: 'closePocoDriver',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.poco.closePocoDriver'
+            ),
+          },
+          {
+            value: 'obtainPocoElementAttr',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.poco.obtainPocoElementAttr'
+            ),
+          },
+          {
+            value: 'getPocoElementAttr',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.poco.getPocoElementAttr'
+            ),
+          },
+          {
+            value: 'getPocoTextValue',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.poco.getPocoTextValue'
+            ),
+          },
+          {
+            value: 'assertPocoText',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.poco.assertPocoText'
+            ),
+          },
+          {
+            value: 'logPocoElementAttr',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.poco.logPocoElementAttr'
+            ),
+          },
+          {
+            value: 'iteratorPocoElement',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.element.poco.iteratorPocoElement'
+            ),
+          },
+        ],
+      },
+    ],
+  },
+  {
+    label: $t('stepDetail.label.harmonyOSOptions.check.self'),
+    value: 'check',
+    children: [
+      {
+        value: 'assert',
+        label: $t('stepDetail.label.harmonyOSOptions.check.assert.self'),
+        children: [
+          {
+            value: 'assertEquals',
+            label: $t('stepDetail.label.harmonyOSOptions.check.assert.assertEquals'),
+          },
+          {
+            value: 'assertNotEquals',
+            label: $t(
+              'stepDetail.label.harmonyOSOptions.check.assert.assertNotEquals'
+            ),
+          },
+          {
+            value: 'assertTrue',
+            label: $t('stepDetail.label.harmonyOSOptions.check.assert.assertTrue'),
+          },
+          {
+            value: 'assertNotTrue',
+            label: $t('stepDetail.label.harmonyOSOptions.check.assert.assertNotTrue'),
+          },
+        ],
+      },
+    ],
+  },
+  {
+    label: $t('stepDetail.label.harmonyOSOptions.img.self'),
+    value: 'img',
+    children: [
+      {
+        value: 'stepScreen',
+        label: $t('stepDetail.label.harmonyOSOptions.img.stepScreen'),
+      },
+      {
+        value: 'checkImage',
+        label: $t('stepDetail.label.harmonyOSOptions.img.checkImage'),
+      },
+      {
+        value: 'clickByImg',
+        label: $t('stepDetail.label.harmonyOSOptions.img.clickByImg'),
+      },
+    ],
+  },
+  {
+    label: $t('stepDetail.label.harmonyOSOptions.spec.self'),
+    value: 'spec',
+    children: [
+      {
+        value: 'publicStep',
+        label: $t('stepDetail.label.harmonyOSOptions.spec.publicStep'),
+      },
+      {
+        value: 'runScript',
+        label: $t('stepDetail.label.harmonyOSOptions.spec.runScript'),
+      },
+      {
+        value: 'monkey',
+        label: $t('stepDetail.label.harmonyOSOptions.spec.monkey'),
+      },
+      {
+        value: 'pause',
+        label: $t('stepDetail.label.harmonyOSOptions.spec.pause'),
+      },
+    ],
+  },
+  {
+    label: $t('stepDetail.label.harmonyOSOptions.settings.self'),
+    value: 'settings',
+    children: [
+      {
+        value: 'stepHold',
+        label: $t('stepDetail.label.harmonyOSOptions.settings.stepHold'),
+      },
+    ],
+  },
+]);
 onMounted(() => {
   if (props.platform === 1) {
     options.value = androidOptions.value;
   }
   if (props.platform === 2) {
     options.value = iOSOptions.value;
+  }
+  if (props.platform === 6) {
+    options.value = harmonyOSOptions.value;
   }
   if (props.stepId !== 0) {
     getStepInfo(props.stepId);
@@ -1484,7 +1869,7 @@ onMounted(() => {
           prop="content"
         >
           <el-select
-            v-if="step.platform === 1"
+            v-if="step.platform === 1 || step.platform === 6"
             v-model="step.content"
             :placeholder="
               $t('stepDetail.msg.select') +
@@ -2862,7 +3247,7 @@ onMounted(() => {
             <el-option value="clickable"></el-option>
           </el-select>
           <el-select
-            v-else-if="step.platform === 1"
+            v-else-if="step.platform === 1 || step.platform === 6"
             v-model="attrList"
             :label="$t('stepDetail.targetAttr')"
             :placeholder="$t('stepDetail.msg.control')"
@@ -2947,7 +3332,7 @@ onMounted(() => {
           }"
         >
           <el-select
-            v-if="step.platform === 1"
+            v-if="step.platform === 1 || step.platform === 6"
             v-model="step.text"
             :label="$t('stepDetail.attribute')"
             :placeholder="
@@ -3364,7 +3749,7 @@ onMounted(() => {
                     <template #default="scope">
                       <el-popover
                         :disabled="
-                          step.platform === 2 &&
+                          (step.platform === 2 || step.platform === 6) &&
                           (scope.row.name === 'isOpenH5Listener' ||
                             scope.row.name === 'isOpenActivityListener' ||
                             scope.row.name === 'isOpenNetworkListener')
@@ -3394,7 +3779,7 @@ onMounted(() => {
                         v-else
                         v-model="scope.row.value"
                         :disabled="
-                          step.platform === 2 &&
+                          (step.platform === 2 || step.platform === 6) &&
                           (scope.row.name === 'isOpenH5Listener' ||
                             scope.row.name === 'isOpenActivityListener' ||
                             scope.row.name === 'isOpenNetworkListener')
@@ -3408,7 +3793,7 @@ onMounted(() => {
                 </el-table>
               </el-tab-pane>
               <el-tab-pane
-                v-if="step.platform === 1"
+                v-if="step.platform === 1 || step.platform === 6"
                 :label="$t('stepDetail.activityBlacklist')"
               >
                 <el-table :data="activityList" border :show-header="false">
