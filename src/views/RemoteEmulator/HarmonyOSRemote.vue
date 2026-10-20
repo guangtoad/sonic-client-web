@@ -205,7 +205,15 @@ const computedCenter = (b1, b2) => {
 
 // 简易日志包装
 const clog = (msg) => {
-  console.log(`${msg}`);
+  const stack = new Error().stack;
+  const lines = stack.split('\n');
+  // Node 环境：第 3 行是调用者
+  // 浏览器 / Postman 环境：第 2 行是调用者
+  const caller = lines[2] || lines[3] || '';
+  // 匹配 "at xxx (file:line:col)" 或 "at file:line:col"
+  const match = caller.match(/:(\d+):\d+/);
+  const line = match ? match[1] : '?';
+  console.log(`[Line ${line}] ${msg}`);
 };
 /**
  * Tab切换懒加载：
@@ -222,7 +230,7 @@ const switchTabs = (e) => {
     if (appList.value.length === 0) {
       refreshAppList();
     }
-  }
+  }to
   if (e.props.name === 'terminal') {
     terminalHeight.value = document.getElementById('pressKey').offsetTop - 150;
   }
@@ -238,7 +246,7 @@ const startPerfmon = (bundleId) => {
       type: 'startPerfmon',
       bundleId,
     });
-    console.log('[DEBUG] startPerfmon sendData:', sendData);
+    clog('[DEBUG] startPerfmon sendData:', sendData);
   websocket.send(sendData);
 };
 // 性能监控：停止性能采集
@@ -246,7 +254,7 @@ const stopPerfmon = () => {
   let sendData = JSON.stringify({
       type: 'stopPerfmon',
     });
-    console.log('[DEBUG] stopPerfmon sendData:', sendData);
+    clog('[DEBUG] stopPerfmon sendData:', sendData);
   websocket.send(sendData);
 };
 const img = import.meta.glob('../../assets/img/*', { eager: true });
@@ -565,14 +573,14 @@ const openSocket = (host, port, key, udId) => {
     let webSocketURL = `ws://${host}:${port}/websockets/harmonyOS/${key}/${udId}/${localStorage.getItem(
         'SonicToken'
       )}`;
-      console.log(`HarmonyOS WebSocket connect .. ${webSocketURL}`);
+      clog(`HarmonyOS WebSocket connect .. ${webSocketURL}`);
     websocket = new WebSocket(
       `ws://${host}:${port}/websockets/harmonyOS/${key}/${udId}/${localStorage.getItem(
         'SonicToken'
       )}`
     );
    
-    console.log(`ws://${host}:${port}/websockets/harmonyOS/screen/${key}/${udId}/`);
+    clog(`ws://${host}:${port}/websockets/harmonyOS/screen/${key}/${udId}/`);
     __Scrcpy = new Scrcpy({
       socketURL: `ws://${host}:${port}/websockets/harmonyOS/screen/${key}/${udId}/${localStorage.getItem(
         'SonicToken'
@@ -583,7 +591,7 @@ const openSocket = (host, port, key, udId) => {
     });
     screenWebsocket = __Scrcpy.websocket;
     changeScreenMode(screenMode.value, 1);
-    console.log(`ws://${host}:${port}/websockets/harmonyOS/terminal/${key}/${udId}/`);
+    clog(`ws://${host}:${port}/websockets/harmonyOS/terminal/${key}/${udId}/`);
     terminalWebsocket = new WebSocket(
       `ws://${host}:${port}/websockets/harmonyOS/terminal/${key}/${udId}/${localStorage.getItem(
         'SonicToken'
@@ -743,7 +751,7 @@ const terminalWebsocketOnmessage = (message) => {
  * 收到 size 消息时更新 imgWidth/imgHeight 并通知 PocoPane
  */
 const screenWebsocketOnmessage = (message) => {
-  // console.log('screenWebsocketOnmessage', message.data);
+  // clog('screenWebsocketOnmessage', message.data);
   if (typeof message.data === 'object') {
     oldBlob = message.data;
     const blob = new Blob([message.data], { type: 'image/jpeg' });
@@ -762,7 +770,7 @@ const screenWebsocketOnmessage = (message) => {
     const u = URL.createObjectURL(blob);
     img.src = u;
   } else {
-    console.log('screenWebsocketOnmessage', message.data);
+    clog('screenWebsocketOnmessage', message.data);
     switch (JSON.parse(message.data).msg) {
       case 'rotation': {
         if (directionStatus.value !== -1) {
@@ -903,7 +911,7 @@ const transformHarmonyTree = (node) => {
  * 处理 perfDetail / poco / proxyResult / pullResult / pushResult / paste / sas / tree / treeFail / installFinish / uninstallFinish / openDriver / step / status / forwardView / eleScreen / error 消息
  */
 const websocketOnmessage = (message) => {
-  console.log('websocketOnmessage', message.data);
+  clog('websocketOnmessage', message.data);
   switch (JSON.parse(message.data).msg) {
     case 'perfDetail':
       androidPerfRef.value.setData(JSON.parse(message.data).detail);
@@ -1199,6 +1207,7 @@ const getCurLocationForHDC = (event) => {
  * - 长按阈值：1000ms，触发 longPress 指令
  */
 const mousedown = (event) => {
+  
   const { x, y } = getCurLocationForHDC(event);
   moveX = x;
   moveY = y;
@@ -1209,21 +1218,29 @@ const mousedown = (event) => {
   loop = setInterval(() => {
     time += 500;
     if (time >= 1000 && !isLongPress) {
-      websocket.send(
-        JSON.stringify({
+      let sendMsg = JSON.stringify({
           type: 'debug',
           detail: 'longPress',
           point: `${moveX},${moveY}`,
-        })
-      );
+        });
+      
+      clog("mousedown send:" + sendMsg);
+      websocket.send(sendMsg);
       isLongPress = true;
     }
   }, 500);
-  websocket.send(
-    JSON.stringify({
+
+  let sendObj = {
       type: 'touch',
       detail: `down ${x} ${y}\n`,
-    })
+    };
+  let sendMsg = JSON.stringify({
+    type: 'touch',
+    detail: `down ${x} ${y}\n`,
+  });
+  clog("mousedown send:" + sendMsg);
+  websocket.send(
+    JSON.stringify(sendMsg)
   );
 };
 
@@ -1238,12 +1255,13 @@ const mousemove = (event) => {
   if (now - lastMoveTime < 16) return;
   lastMoveTime = now;
   const { x, y } = getCurLocationForHDC(event);
-  websocket.send(
-    JSON.stringify({
+
+  let moveData = {
       type: 'touch',
       detail: `move ${x} ${y}\n`,
-    })
-  );
+    };
+  clog('[HarmonyOSRemote] mouseup mousemove:', JSON.stringify(moveData));
+  websocket.send(JSON.stringify(moveData));
 };
 
 /**
@@ -1258,21 +1276,21 @@ const mouseup = (event) => {
   time = 0;
   isPress = false;
   const { x, y } = getCurLocationForHDC(event);
-  websocket.send(
-    JSON.stringify({
+  let touchMsg = JSON.stringify({
       type: 'touch',
       detail: `up ${x} ${y}\n`,
-    })
-  );
+  });
+  clog('[HarmonyOSRemote] mouseup 发送数据(touch):' +  touchMsg);
+  websocket.send(touchMsg);
   if (moveX === x && moveY === y) {
     if (!isLongPress) {
-      websocket.send(
-        JSON.stringify({
+      let tapMsg = JSON.stringify({
           type: 'debug',
           detail: 'tap',
           point: `${x},${y}`,
-        })
-      );
+        });
+      clog('[HarmonyOSRemote] mouseup 发送数据(tap):' + touchMsg);
+      websocket.send(tapMsg);
       inputBox.value.focus();
     }
   } else {
@@ -1285,18 +1303,7 @@ const mouseup = (event) => {
       pointB: `${x},${y}`,
       duration: duration,
     };
-    console.log('[HarmonyOSRemote] swipe 发送数据:', {
-      pointA: swipeData.pointA,
-      pointB: swipeData.pointB,
-      duration: swipeData.duration,
-      moveX,
-      moveY,
-      endX: x,
-      endY: y,
-      startTime,
-      endTime,
-      websocketReady: websocket && websocket.readyState === 1,
-    });
+    clog('[HarmonyOSRemote] mouseup 发送数据:', JSON.stringify(swipeData));
     websocket.send(JSON.stringify(swipeData));
     inputBox.value.focus();
   }
@@ -1318,7 +1325,7 @@ const mouseleave = () => {
  * 支持旋转状态下的坐标转换
  */
 const touchstart = async (event) => {
-  console.log(`touchstart event = ${JSON.stringify(event)}`);
+  clog(`touchstart event = ${JSON.stringify(event)}`);
   const debugPic = document.getElementById('debugPic');
   const rect = debugPic.getBoundingClientRect();
   // 屏幕坐标 → 设备物理坐标（与 bounds 基准一致）
@@ -1402,14 +1409,14 @@ const findElementByPoint = (ele, x, y) => {
   return result;
 };
 const handleNodeClick = (data) => {
-  console.log(`handleNodeClick data = ${JSON.stringify(data)}`);
+  clog(`handleNodeClick data = ${JSON.stringify(data)}`);
   if (data !== null) {
     elementDetail.value = data.detail;
     print(data);
   }
 };
 const print = (data) => {
-  console.log(`print data = ${JSON.stringify(data)}`);
+  clog(`print data = ${JSON.stringify(data)}`);
   const canvas = document.getElementById('debugPic');
   const g = canvas.getContext('2d');
   g.clearRect(0, 0, canvas.width, canvas.height);
@@ -1570,7 +1577,7 @@ const runStep = () => {
       caseId: testCase.value.id,
       pwd: device.value.password,
     });
-    console.log('[DEBUG] runStep sendData:', sendData);
+    clog('[DEBUG] runStep sendData:', sendData);
   websocket.send(sendData);
 };
 const checkLocation = (data) => {
@@ -1582,7 +1589,7 @@ const checkLocation = (data) => {
       eleType: data.eleType,
       pwd: device.value.password,
     });
-    console.log('[DEBUG] checkLocation sendData:', sendData);
+    clog('[DEBUG] checkLocation sendData:', sendData);
   websocket.send(sendData);
 };
 const stopStep = () => {
@@ -1835,7 +1842,7 @@ const getWebViewForward = () => {
   let sendData = JSON.stringify({
       type: 'forwardView',
     });
-    console.log('[DEBUG] getWebViewForward sendData:', sendData);
+    clog('[DEBUG] getWebViewForward sendData:', sendData);
   websocket.send(sendData);
 };
 /**
@@ -1847,7 +1854,7 @@ const getWebViewForward = () => {
  * 5. 调用 window.close() 关闭窗口
  */
 const close = () => {
-  console.log('close');
+  clog('close');
   if (websocket !== null) {
     websocket.close();
     websocket = null;
@@ -1877,10 +1884,10 @@ const handleClose = (reason = '') => {
   if (isClosing.value) return;
   isClosing.value = true;
   if (reason) {
-    console.log('[HarmonyOSRemote] handleClose reason:', reason);
+    clog('[HarmonyOSRemote] handleClose reason:', reason);
   }
   else {
-    console.log('[HarmonyOSRemote] handleClose ');
+    clog('[HarmonyOSRemote] handleClose ');
   }
   close();
 };
@@ -1895,24 +1902,24 @@ onBeforeUnmount(() => {
 const getDeviceById = (id) => {
   loading.value = true;
   axios.get('/controller/devices', { params: { id } }).then((resp) => {
-    console.log('[DEBUG] getDeviceById response:', resp.code, resp.data?.status);
+    clog('[DEBUG] getDeviceById response:', resp.code, resp.data?.status);
     if (resp.code === 2000) {
       device.value = resp.data;
-      console.log('[DEBUG] getDeviceById Device:', JSON.stringify(device.value));
+      clog('[DEBUG] getDeviceById Device:', JSON.stringify(device.value));
       const allowedStatuses = ['ONLINE', 'DEBUGGING'];
       if (!allowedStatuses.includes(device.value.status)) {
-        console.log('[DEBUG] Device not ONLINE/DEBUGGING, status:', device.value.status);
+        clog('[DEBUG] Device not ONLINE/DEBUGGING, status:', device.value.status);
         ElMessage.error({
           message: $t('harmonyOSRemoteTS.deviceFail'),
         });
         router.replace('/Index/Devices');
         return;
       }
-      console.log('[DEBUG] Device is ONLINE, fetching agent...');
+      clog('[DEBUG] Device is ONLINE, fetching agent...');
       axios
         .get('/controller/agents', { params: { id: device.value.agentId } })
         .then((resp) => {
-          console.log('[DEBUG] Agent response:', resp.code, resp.data ? 'ok' : 'null');
+          clog('[DEBUG] Agent response:', resp.code, resp.data ? 'ok' : 'null');
           if (resp.code === 2000) {
             agent.value = resp.data;
             openSocket(
@@ -1977,7 +1984,7 @@ const resetAudioPlayer = () => {
   });
 };
 const getProjectList = () => {
-  console.log('getProjectList');
+  clog('getProjectList');
   axios.get('/controller/projects/list').then((resp) => {
     store.commit('saveProjectList', resp.data);
   });
@@ -1987,7 +1994,7 @@ const idleCount = ref(0);
 // // 缓存页面每次进入都执行
 // onActivated(() => {
   
-//   console.log('onActivated');
+//   clog('onActivated');
 // })
 /**
  * 组件挂载生命周期：
@@ -1998,7 +2005,7 @@ const idleCount = ref(0);
  * 5. 启动空闲检测定时器（checkAlive，每秒 tick 检查）
  */
 onMounted(() => {
-  console.log('mounted');
+  clog('mounted');
   if (store.state.project.id) {
     project.value = store.state.project;
   } else {
